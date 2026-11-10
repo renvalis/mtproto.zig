@@ -1,0 +1,28 @@
+name: mtproto-local-stack
+
+services:
+  proxy:
+    build:
+      context: ../..
+    image: mtproto-zig:local
+    ports:
+      - "127.0.0.1:8443:8443"
+      - "127.0.0.1:61208:61208"
+    volumes:
+      - ../../config.toml:/etc/mtproto-proxy/config.toml:ro
+
+  dashboard:
+    build:
+      context: ../..
+      dockerfile: hack/docker/Dockerfile.dashboard
+    # Metrics are read from loopback; psutil can see the proxy process.
+    network_mode: service:proxy
+    pid: service:proxy
+    depends_on:
+      - proxy
+    volumes:
+      - ../../config.toml:/opt/mtproto-proxy/config.toml:ro
+      - dashboard-data:/data
+
+volumes:
+  dashboard-data:

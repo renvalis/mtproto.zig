@@ -288,6 +288,7 @@ port = 443
 # "tunnel"     — direct TCP with socket policy routing (SO_MARK)
 # "socks5"     — route via SOCKS5 proxy
 # "http"       — route via HTTP CONNECT proxy
+# "telegram_ws" — Telegram WSS / Cloudflare / HTTP2 (see docs/telegram-ws.md)
 # type = "auto"
 
 # When true, an unresolved or unconfigured socks5/http upstream allows ALL
@@ -296,6 +297,23 @@ port = 443
 # Note: socks5/http/tunnel metadata refresh
 # shells out to `curl`, so curl must be installed for those modes.
 # allow_direct_fallback = false
+
+# ── Telegram WebSocket and Cloudflare transport ──
+# Included in every build; no additional build flag is needed.
+# Activate with type = "telegram_ws" (alias "zapret"). TLS and CA roots are bundled in the binary.
+# Set general.use_middle_proxy=false; ad-tags are incompatible.
+# [upstream.telegram_ws]
+# fronting = true
+# fronting_sni = "sprinthost.ru"
+# cf_fallback = true # CF-domain WSS routes, independent of Telegram IP reachability
+# cf_first = false # true skips waiting for direct Telegram attempts before CF
+# cf_h2_media = true # try HTTP/2 POST /api before CF WSS for media
+# cf_domains = "sadnews.co.uk,pclead.co.uk" # optional comma-separated override; max 20
+# fronting_verify_hostname = true # false reproduces reference chain-only fronting
+# pool_size = 1 # 0 disables; maximum 4, per DC/media per worker
+# handshake_timeout_sec = 8
+# dc2_ip = "149.154.167.220"
+# dc4_ip = "149.154.167.220"
 
 # ── VPN tunnel configuration ──
 # Activate with: type = "tunnel"

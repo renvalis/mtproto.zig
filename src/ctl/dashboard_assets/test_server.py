@@ -335,6 +335,31 @@ def test_config_mutator_uses_the_atomic_writer(tmp_path, monkeypatch):
     )
 
 
+@pytest.mark.parametrize("error", [FileNotFoundError("systemctl"), server.subprocess.TimeoutExpired("systemctl", 3)])
+def test_systemd_checks_are_optional_in_containers(monkeypatch, error):
+    def unavailable(*args, **kwargs):
+        raise error
+    monkeypatch.setattr(server.subprocess, "run", unavailable)
+    assert server._unit_active("nginx.service") is False
+    assert server._unit_enabled("nginx.service") is False
+
+
+def test_container_proxy_statistics_use_metrics(tmp_path, monkeypatch):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[metrics]\nenabled = true\nhost = "0.0.0.0"\nport = 9400\n')
+    monkeypatch.setattr(server, "_proxy_config_candidates", lambda: [cfg])
+    monkeypatch.setattr(server, "_read_proxy_metrics", lambda _: (
+        'mtproto_connections_active 3\nmtproto_connections_max 97\n'
+        'mtproto_connections_total 42\nmtproto_handshakes_inflight 1\n'
+        'mtproto_user_connections_active{user="alice"} 2\n'
+    ))
+    stats = server._proxy_stats_from_metrics()
+    assert stats["active"] == 3 and stats["max"] == 97 and stats["total"] == 42
+    assert stats["per_user_active"] == {"alice": 2}
+    assert stats["unassigned_active"] == 1
+    assert stats["source"] == "metrics"
+
+
 def test_logs_fanout_is_per_client_cursor():
     # Regression for the destructive-drain bug: two independent cursors over the same recent
     # ring must each see all entries (no stealing between concurrent /ws/logs viewers).

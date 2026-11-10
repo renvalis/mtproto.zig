@@ -1,0 +1,20 @@
+name: Telegram WS transport
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  ws:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.16.0
+      # OpenSSL/Python packages below are fixture tools only; proxy runtime is isolated.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends perl make pkg-config openssl ca-certificates
+      - run: zig fmt --check build.zig src
+      - run: zig build test -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSafe
+      - run: zig build -Dtarget=x86_64-linux-musl -Dstrip=true -Doptimize=ReleaseSafe
+      - run: sudo python3 test/ws_transport_e2e.py --proxy "$PWD/zig-out/bin/mtproto-proxy" --isolated-runtime

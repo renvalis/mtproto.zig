@@ -11,7 +11,7 @@ const build_options = @import("build_options");
 
 // ── Shared constants ────────────────────────────────────────────
 
-pub const REPO_OWNER = "sleep3r";
+pub const REPO_OWNER = "alex98247";
 pub const REPO_NAME = "mtproto.zig";
 pub const INSTALL_DIR = "/opt/mtproto-proxy";
 pub const SERVICE_NAME = "mtproto-proxy";

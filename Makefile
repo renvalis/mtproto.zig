@@ -1,6 +1,6 @@
-.PHONY: help build fmt test e2e deploy
+.PHONY: help build fmt test e2e deploy dashboard check-server
 
-SERVER ?= mtproto.sleep3r.ru
+SERVER ?=
 CONFIG ?= config.toml
 
 .DEFAULT_GOAL := help
@@ -24,7 +24,10 @@ e2e: ## Run E2E/integration harness
 
 # ── server ops ────────────────────────────────────────────────────────────────
 
-deploy: build ## Build and push proxy + mtbuddy to server (binary-only; PUSH_CONFIG=1 also pushes config/env)
+check-server:
+	@test -n "$(SERVER)" || { echo "Specify your server: SERVER=proxy.example.com" >&2; exit 1; }
+
+deploy: check-server build ## Build and push proxy + mtbuddy to server (binary-only; PUSH_CONFIG=1 also pushes config/env)
 	scp zig-out/bin/mtproto-proxy root@$(SERVER):/opt/mtproto-proxy/mtproto-proxy.new
 	scp zig-out/bin/mtbuddy root@$(SERVER):/usr/local/bin/mtbuddy.new
 	@# Config/env push is OPT-IN: by default `make deploy` ships ONLY the binary and never
@@ -47,5 +50,5 @@ deploy: build ## Build and push proxy + mtbuddy to server (binary-only; PUSH_CON
 
 # ── dashboard ─────────────────────────────────────────────────────────────────
 
-dashboard:
+dashboard: check-server
 	ssh -L 61208:localhost:61208 root@$(SERVER)

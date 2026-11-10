@@ -11,7 +11,7 @@ Thanks for helping improve `mtproto.zig`.
 ## Local Workflow
 
 ```bash
-git clone https://github.com/sleep3r/mtproto.zig.git
+git clone https://github.com/alex98247/mtproto.zig.git
 cd mtproto.zig
 ```
 

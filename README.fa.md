@@ -6,7 +6,7 @@
 
 یک پراکسی کوچک Telegram که روی سرور خودتان اجرا می‌کنید. درون HTTPS معمولی پنهان می‌شود، پس سانسور نمی‌تواند آن را پیدا کند — و خانواده‌تان هم نمی‌تواند آن را از دست بدهد. یک دستور برای راه‌اندازی، یک لینک برای به‌اشتراک‌گذاری.
 
-`177 KB · under 1 MB RAM · 0 dependencies` — بله، واقعاً همین‌قدر سبک است *(جزئیات در ادامه ↓)*
+`یک فایل اجرایی · FakeTLS · WSS · Cloudflare · HTTP/2`
 
 <sub>از نظر فنی: یک پراکسی MTProto کوچک و بدون وابستگی که با Zig نوشته شده و ترافیک Telegram را به‌شکل HTTPS استاندارد TLS 1.3 استتار می‌کند.</sub>
 
@@ -48,7 +48,7 @@
 
 | پراکسی | زبان | فایل اجرایی | RSS پایه | راه‌اندازی | وابستگی‌ها |
 |---|---|---:|---:|---|---|
-| **mtproto.zig** | Zig | **177 KB** | **0.75 MB** | **< 10 ms** | **0** |
+| **mtproto.zig** | Zig | TLS/H2 داخلی | — | — | کتابخانه‌های ایستای TLS/H2 |
 | Official MTProxy | C | 524 KB | 8.0 MB | < 10 ms | openssl, zlib |
 | Telemt | Rust | 15 MB | 12.1 MB | ~ 5-6 s | 423 کریت |
 | mtg | Go | 13 MB | 11.6 MB | ~ 30 ms | 78 ماژول |
@@ -89,10 +89,10 @@ MiddleProxy برای برچسب‌های تبلیغاتی (promotion tags) و ب
 ### یک دستور
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/alex98247/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
 
 # Explicitly allow unsigned bootstrap mode (not recommended)
-curl -fsSL https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
+curl -fsSL https://raw.githubusercontent.com/alex98247/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
 # or: MTPROTO_INSECURE=1
 ```
 
@@ -132,7 +132,7 @@ sudo mtbuddy --interactive
 <summary>نمایش: نصب‌کننده‌ی تعاملی</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/assets/buddy.gif" alt="نمایش: نصب‌کننده‌ی تعاملی" width="80%">
+  <img src="https://raw.githubusercontent.com/alex98247/mtproto.zig/main/assets/buddy.gif" alt="نمایش: نصب‌کننده‌ی تعاملی" width="80%">
 </p>
 <br>
 
@@ -563,7 +563,7 @@ ssh -L 61208:localhost:61208 root@<server_ip>
 <summary>نمایش: داشبورد نظارت</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/assets/dashboard.gif" alt="نمایش: داشبورد نظارت" width="80%">
+  <img src="https://raw.githubusercontent.com/alex98247/mtproto.zig/main/assets/dashboard.gif" alt="نمایش: داشبورد نظارت" width="80%">
 </p>
 <br>
 
@@ -609,7 +609,7 @@ docker run --rm \
 نیازمند [Zig 0.16.0](https://ziglang.org/download/) است.
 
 ```bash
-git clone https://github.com/sleep3r/mtproto.zig.git
+git clone https://github.com/alex98247/mtproto.zig.git
 cd mtproto.zig
 
 make build      # cross-compile ReleaseFast binaries for Linux x86_64_v3+aes
@@ -644,12 +644,12 @@ scp zig-out/bin/mtproto-proxy root@<SERVER>:/opt/mtproto-proxy/
 پشتیبانی از Docker برای آزمایش، آزمون‌های بسته‌بندی و استقرارهای ساده‌ای که فقط فایل اجرایی پراکسی لازم است فراهم شده. این پروژه در درجه‌ی اول برای یک هاست بومیِ Linux که توسط `mtbuddy` مدیریت می‌شود طراحی شده است: ماژول‌های DPI، failover استخر تونل، مسیریابیِ مبتنی بر سیاست، استتار Nginx، nfqws و تایمرهای بازیابی، یکپارچه‌سازی‌های سطح-هاست هستند و به‌طور کامل توسط کانتینر نمایندگی نمی‌شوند.
 
 ```bash
-docker pull ghcr.io/sleep3r/mtproto.zig:latest
+docker pull ghcr.io/alex98247/mtproto.zig:latest
 
 docker run --rm \
   -p 443:443 \
   -v "$PWD/config.toml:/etc/mtproto-proxy/config.toml:ro" \
-  ghcr.io/sleep3r/mtproto.zig:latest
+  ghcr.io/alex98247/mtproto.zig:latest
 ```
 
 ترافیک رسانه/تبلیغِ MiddleProxy به IP:port مبدأِ خروجی که در هندشیک رمزنگاری‌شده‌اش استفاده می‌شود حساس است. برای استقرارهای Docker که به MiddleProxy نیاز دارند، شبکه‌ی هاست (`--network host`) یا نصب بومیِ `mtbuddy` را ترجیح دهید. `[server].public_ip` فقط آدرس ورودی است که به کلاینت‌ها نمایش داده می‌شود؛ اگر ترافیک خروجیِ DC از طریق یک IP مربوط به VPN/NAT خارج می‌شود، `[server].middle_proxy_nat_ip` را روی آن IPv4 خروجی تنظیم کنید. Bridge یا NAT راه دور که پورت‌های مبدأ را بازنویسی می‌کند، همچنان می‌تواند هندشیک‌های MiddleProxy را بشکند.
@@ -744,3 +744,5 @@ VPNهای تجاری اغلب DPI انجام می‌دهند و ترافیک پ�
 ## مجوز
 
 [MIT](LICENSE) © 2026 Aleksandr Kalashnikov
+
+Telegram WSS، مسیر جایگزین Cloudflare و HTTP/2 برای رسانه در همهٔ ساخت‌ها وجود دارند و به پرچم ساخت جداگانه نیاز ندارند. تنظیم: `[upstream] type = "telegram_ws"`. ابزارهای ساخت: Zig 0.16.0، Perl، Make و pkg-config. [مستندات](docs/telegram-ws.md).

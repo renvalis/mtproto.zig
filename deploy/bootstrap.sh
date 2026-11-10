@@ -2,7 +2,7 @@
 # bootstrap.sh — download and run mtbuddy, the mtproto.zig installer
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/alex98247/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
 #   curl -fsSL .../bootstrap.sh | sudo bash -s -- install --port 443 --domain rutube.ru --yes
 #   curl -fsSL .../bootstrap.sh | sudo bash -s -- --interactive
 #
@@ -12,11 +12,11 @@ set -euo pipefail
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
 export PATH
 
-REPO="sleep3r/mtproto.zig"
+REPO="alex98247/mtproto.zig"
 INSTALL_TO="/usr/local/bin/mtbuddy"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-PINNED_MINISIGN_PUBKEY="RWT8YwmUuq/3WpUnYJjD6rAfQugYdZKWr61U3O+2kdNvriLSyrvVU/NO"
+PINNED_MINISIGN_PUBKEY="RWRC+9K03Y5xlzE/deJ1BKvK0xCaaTiLCvz/8gRlsWCk0fdkkq7WvHmz"
 MINISIGN_PUBKEY="${MTPROTO_MINISIGN_PUBKEY:-$PINNED_MINISIGN_PUBKEY}"
 MINISIGN_BOOTSTRAP_VERSION="0.12"
 MINISIGN_BOOTSTRAP_SHA256="9a599b48ba6eb7b1e80f12f36b94ceca7c00b7a5173c95c3efc88d9822957e73"

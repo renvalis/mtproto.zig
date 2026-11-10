@@ -14,7 +14,7 @@ make test     — run unit tests
 make deploy   — build and push proxy + mtbuddy to server
 ```
 
-Default server: `mtproto.sleep3r.ru` (override with `SERVER=<host>`).
+Set the deployment server explicitly with `SERVER=<host>`; there is no default server.
 
 ## Local Dev Iteration
 
@@ -27,8 +27,7 @@ make test           # run unit tests
 ## Deploy to Server
 
 ```bash
-make deploy                            # uses default SERVER
-make deploy SERVER=mtproto.sleep3r.ru  # explicit
+make deploy SERVER=proxy.example.com
 ```
 
 `deploy` depends on `build`, so it always cross-compiles first. Flow:
@@ -46,7 +45,7 @@ make deploy SERVER=mtproto.sleep3r.ru  # explicit
 Directly on host:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/alex98247/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
 ```
 
 Or if mtbuddy is already installed:

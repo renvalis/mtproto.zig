@@ -54,6 +54,15 @@ Current scenarios include:
 - connection churn 10k+
 - SIGTERM during active relay
 
+## Telegram WS upstream
+
+The built-in Telegram transport has offline TLS/WebSocket integration tests in
+`ws_transport_e2e.py`. See [build, dependencies and test commands](../docs/telegram-ws.md).
+The fixture uses loopback TCP 443 and does not contact Telegram. Pass
+`--isolated-runtime` as root to verify the WS binary runs in an empty chroot
+without a dynamic loader, libssl or system CA files. Python/OpenSSL in the
+test driver are fixture tools only.
+
 ## What We Measure
 
 The capacity probe reports, per target level:

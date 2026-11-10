@@ -39,6 +39,7 @@ pub const UpstreamMode = enum {
     socks5,
     /// HTTP CONNECT proxy upstream.
     http,
+    telegram_ws,
 };
 
 /// Action for a TLS ClientHello whose SNI doesn't match tls_domain.
@@ -88,6 +89,7 @@ fn parseExpiryToUnix(value: []const u8) ?i64 {
 }
 
 fn parseUpstreamMode(value: []const u8) ?UpstreamMode {
+    if (std.mem.eql(u8, value, "telegram_ws") or std.mem.eql(u8, value, "zapret")) return .telegram_ws;
     if (std.mem.eql(u8, value, "auto")) return .auto;
     if (std.mem.eql(u8, value, "direct") or std.mem.eql(u8, value, "none")) return .direct;
     if (std.mem.eql(u8, value, "tunnel")) return .tunnel;
@@ -535,8 +537,9 @@ pub const Config = struct {
     /// Test-only hook to redirect upstream connections locally
     datacenter_override: ?net.IpAddress = null,
     /// Upstream egress mode. Parsed from [upstream].type.
-    /// Supported values: auto | direct | tunnel | socks5 | http.
+    /// Supported values: auto | direct | tunnel | socks5 | http | telegram_ws (alias zapret).
     upstream_mode: UpstreamMode = .auto,
+    telegram_ws: @import("extensions/ws_transport/config.zig").Config = .{},
     /// Allow fallback to direct egress when explicit upstream mode
     /// (socks5/http) is misconfigured or unavailable.
     allow_direct_fallback: bool = false,
@@ -670,6 +673,10 @@ pub const Config = struct {
             if (path.len == 0 or path[0] != '/' or std.mem.startsWith(u8, path, "//") or std.mem.indexOfAny(u8, path, "?#\\\r\n") != null) return error.InvalidWebSocketPath;
             if (self.web.port == self.port or self.web.port == self.mask_port) return error.WebPortCollision;
         }
+        if (self.upstream_mode == .telegram_ws) {
+            if (self.use_middle_proxy or self.tag != null) return error.WsMiddleProxyIncompatible;
+            if (self.datacenter_override != null) return error.WsDatacenterOverrideIncompatible;
+        }
         const user = self.upstream_proxy_username orelse "";
         const password = self.upstream_proxy_password orelse "";
         if (self.upstream_mode == .socks5 or self.upstream_mode == .http) {
@@ -684,6 +691,11 @@ pub const Config = struct {
 
     /// Emit startup warnings for configuration values known to cause issues.
     pub fn emitWarnings(self: *const Config) void {
+        if (self.upstream_mode == .telegram_ws) {
+            std.log.scoped(.config).warn("Telegram WS bypasses fast_mode and force_media_middle_proxy; buffers require more memory than direct TCP", .{});
+            if (self.telegram_ws.fronting and !self.telegram_ws.fronting_verify_hostname)
+                std.log.scoped(.config).warn("Telegram WS fronting validates the CA chain only; hostname verification is explicitly disabled for alternate SNI", .{});
+        }
         if (self.metrics.enabled and !std.mem.eql(u8, self.metrics.effectiveHost(), "127.0.0.1") and
             !std.mem.eql(u8, self.metrics.effectiveHost(), "::1"))
         {
@@ -850,6 +862,7 @@ pub const Config = struct {
         var in_metrics_section = false;
         var in_web_section = false;
         var in_upstream_section = false;
+        var in_telegram_ws_section = false;
         var in_upstream_socks5_section = false;
         var in_upstream_http_section = false;
         var in_upstream_tunnel_section = false;
@@ -883,6 +896,7 @@ pub const Config = struct {
                 in_general_section = std.mem.eql(u8, header, "[general]");
                 in_metrics_section = std.mem.eql(u8, header, "[metrics]");
                 in_web_section = std.mem.eql(u8, header, "[web]");
+                in_telegram_ws_section = std.mem.eql(u8, header, "[upstream.telegram_ws]");
                 in_upstream_section = std.mem.eql(u8, header, "[upstream]");
                 in_upstream_socks5_section = std.mem.eql(u8, header, "[upstream.socks5]");
                 in_upstream_http_section = std.mem.eql(u8, header, "[upstream.http]");
@@ -892,7 +906,7 @@ pub const Config = struct {
                 if (in_upstream_socks5_section or in_upstream_http_section or in_upstream_tunnel_section) {
                     in_upstream_section = false;
                 }
-                if (!(in_users_section or in_direct_users_section or in_user_max_conns_section or in_user_expirations_section or in_user_max_ips_section or in_censorship_section or in_server_section or in_general_section or in_metrics_section or in_web_section or in_upstream_section or in_upstream_socks5_section or in_upstream_http_section or in_upstream_tunnel_section)) {
+                if (!(in_users_section or in_direct_users_section or in_user_max_conns_section or in_user_expirations_section or in_user_max_ips_section or in_censorship_section or in_server_section or in_general_section or in_metrics_section or in_web_section or in_upstream_section or in_upstream_socks5_section or in_upstream_http_section or in_upstream_tunnel_section or in_telegram_ws_section)) {
                     if (!@import("builtin").is_test) std.log.scoped(.config).warn("unknown configuration section '{s}'; ignored", .{header});
                 }
                 continue;
@@ -1198,6 +1212,8 @@ pub const Config = struct {
                         freeStringSlice(allocator, cfg.web.relay_sources);
                         cfg.web.relay_sources = replacement;
                     } else warnUnknownKey(key);
+                } else if (in_telegram_ws_section) {
+                    try cfg.telegram_ws.parse(key, value);
                 } else if (in_upstream_section) {
                     if (std.mem.eql(u8, key, "type")) {
                         if (parseUpstreamMode(value)) |mode| {
@@ -2698,4 +2714,24 @@ test "web public site and HTTP peer configuration is retained" {
     try std.testing.expect(cfg.web.public_dir != null);
     try std.testing.expectEqualStrings("/srv/site", cfg.web.public_dir.?);
     try std.testing.expectEqual(@as(usize, 1), cfg.web.trusted_http_sources.len);
+}
+
+test "telegram WS config and zapret alias own no dynamic strings" {
+    const allocator = std.testing.allocator;
+    var cfg = try Config.parse(allocator,
+        \\[upstream]
+        \\type = "zapret"
+        \\[upstream.telegram_ws]
+        \\dc2_ip = "192.0.2.2"
+        \\pool_size = 2
+        \\fronting_sni = "front.example.com"
+        \\fronting_verify_hostname = false
+    );
+    defer cfg.deinit(allocator);
+    try std.testing.expectEqual(UpstreamMode.telegram_ws, cfg.upstream_mode);
+    try std.testing.expectEqualStrings("front.example.com", cfg.telegram_ws.sni());
+    try std.testing.expectEqual(@as(u8, 2), cfg.telegram_ws.pool_size);
+    try cfg.validate();
+    cfg.use_middle_proxy = true;
+    try std.testing.expectError(error.WsMiddleProxyIncompatible, cfg.validate());
 }

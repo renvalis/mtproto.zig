@@ -3,11 +3,26 @@
     .version = "1.15.4", // x-release-please-version
     .fingerprint = 0x4a7d5f2904e880a5, // Changing this has security and trust implications.
     // Earliest supported Zig. The codebase rides churn-prone std APIs
-    // (std.Io.Threaded, CompatRwLock shim), so the toolchain is pinned: a 1.0
-    // that markets a 177 KB zero-dep binary must guarantee which compiler
-    // produces it. See also .zig-version for toolchain managers (zvm/zigup).
+    // (std.Io.Threaded, CompatRwLock shim), so the toolchain is pinned for
+    // reproducible builds. See .zig-version for toolchain managers (zvm/zigup).
     .minimum_zig_version = "0.16.0",
-    .dependencies = .{},
+    .dependencies = .{
+        .ws_nghttp2 = .{
+            .url = "https://github.com/nghttp2/nghttp2/releases/download/v1.71.0/nghttp2-1.71.0.tar.xz",
+            .hash = "N-V-__8AAIgi2gCNAFzaSP_Qwb8MVv4GhCI5tn9HjmJdBW5y",
+            .lazy = true,
+        },
+        .ws_openssl = .{
+            .url = "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz",
+            .hash = "N-V-__8AAHFs0gcqWCv38hrtl-TV8sJ7GNMci6825jYBinz2",
+            .lazy = true,
+        },
+        .ws_certifi = .{
+            .url = "https://files.pythonhosted.org/packages/fd/11/b524cbd9bbdaca58608e4cf4053fd463417549e1959fa8d3aa18319f9555/certifi-2026.10.23.tar.gz",
+            .hash = "N-V-__8AAHHRAwB2l1h_krDpIk5iaXZyS9m4KQe7iIiJFLYy",
+            .lazy = true,
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",
