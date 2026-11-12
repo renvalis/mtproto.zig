@@ -6,9 +6,9 @@
 
 Крошечный Telegram-прокси, который вы запускаете на своём сервере. Он прячется в обычном HTTPS — цензуре его не найти, а вашим близким не потерять. Установка одной командой, одна ссылка, чтобы поделиться.
 
-`177 КБ · меньше 1 МБ RAM · 0 зависимостей` — да, он настолько лёгкий *(подробности ниже ↓)*
+`Один бинарник · FakeTLS · WSS · Cloudflare · HTTP/2`
 
-<sub>Технически: крошечный MTProto-прокси на Zig без зависимостей, маскирует трафик Telegram под обычный TLS 1.3 HTTPS.</sub>
+<sub>Технически: MTProto-прокси на Zig со встроенными TLS и HTTP/2, маскирует трафик Telegram под обычный TLS 1.3 HTTPS.</sub>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Zig](https://img.shields.io/badge/zig-0.16.0-f7a41d.svg?logo=zig&logoColor=white)](https://ziglang.org)
@@ -48,7 +48,7 @@ VPN заметен — цензор узнаёт протокол и блоки�
 
 | Proxy | Язык | Бинарник | Baseline RSS | Старт | Зависимости |
 |---|---|---:|---:|---|---|
-| **mtproto.zig** | Zig | **177 КБ** | **0.75 МБ** | **< 10 мс** | **0** |
+| **mtproto.zig** | Zig | Встроены TLS/H2 | — | — | Статические TLS/H2-библиотеки |
 | Official MTProxy | C | 524 КБ | 8.0 МБ | < 10 мс | openssl, zlib |
 | Telemt | Rust | 15 МБ | 12.1 МБ | ~ 5-6 с | 423 crates |
 | mtg | Go | 13 МБ | 11.6 МБ | ~ 30 мс | 78 modules |
@@ -59,7 +59,7 @@ VPN заметен — цензор узнаёт протокол и блоки�
 
 Zig даёт производительность и минимальный footprint уровня C, но без привычной боли C-проектов:
 - **Без произвольных аллокаций:** слоты соединений и буферы заранее выделяются на старте. Нет GC, который может уронить кадры под нагрузкой.
-- **Герметичная кросс-компиляция:** можно запустить `zig build` на macOS и получить статически слинкованный Linux-бинарник. Без Docker и несовпадений `glibc`.
+- **Кросс-компиляция:** собирайте с явным Linux-target с macOS или Linux; TLS и HTTP/2 статически входят в бинарник.
 - **Comptime:** маппинг протокола, endian-конверсии и двуязычные строки `mtbuddy` вычисляются при компиляции.
 
 Прокси также включает набор техник обхода DPI:
@@ -89,10 +89,10 @@ MiddleProxy нужен для промо-тега и медиа на аккау�
 ### Одна команда
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
 
 # Явно разрешить unsigned bootstrap mode (не рекомендуется)
-curl -fsSL https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
 # или: MTPROTO_INSECURE=1
 ```
 
@@ -127,7 +127,7 @@ sudo mtbuddy --interactive
 <summary>Демо: интерактивная установка</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/assets/buddy.gif" alt="Demo: interactive installer" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/buddy.gif" alt="Demo: interactive installer" width="80%">
 </p>
 <br>
 
@@ -292,6 +292,7 @@ sudo systemctl restart mtproto-proxy
 | `tunnel` | `SO_MARK=200` и policy routing через VPN tunnel pool | DC заблокированы провайдером |
 | `socks5` | Внешний SOCKS5 proxy с опциональной auth | Уже есть proxy-инфраструктура |
 | `http` | HTTP CONNECT proxy с Basic auth | Corporate proxy environments |
+| `telegram_ws` | Встроенные WSS, Cloudflare fallback и HTTP/2 для медиа | Прямые маршруты к Telegram заблокированы |
 
 ### VPN tunnel pool
 
@@ -371,7 +372,7 @@ password = "secret"
 
 > **Важно:** через upstream маршрутизируется трафик к DC и refresh MiddleProxy metadata (`getProxyConfig` / `getProxySecret`). Mask/camouflage-соединения всегда идут напрямую.
 
-> **О зависимостях:** «ноль зависимостей» верно для дефолтного `auto`/`direct`. В режимах `socks5`, `http` или `tunnel` refresh метаданных MiddleProxy вызывает `curl`, поэтому `curl` должен быть установлен на хосте (штатный установщик ставит его сам).
+> **Зависимости:** OpenSSL, nghttp2 и CA-набор встроены в прокси. Отдельные TLS/HTTP2-пакеты для запуска не нужны. Обновление метаданных использует `curl`, который устанавливается штатным установщиком и входит в Docker-образ.
 
 ---
 
@@ -427,7 +428,7 @@ alice = true
 
 | Key | Default | Описание |
 |---|---|---|
-| `[upstream].type` | `auto` | `auto`, `direct`, `tunnel`, `socks5`, `http` |
+| `[upstream].type` | `auto` | `auto`, `direct`, `tunnel`, `socks5`, `http`, `telegram_ws` |
 | `[upstream] allow_direct_fallback` | `false` | Разрешить fallback на direct для socks5/http |
 | `[upstream.tunnel] interface` | `"awg0"` | Legacy single interface / fallback |
 | `[upstream.tunnel] interfaces` | `["awg0"]` | Ordered tunnel pool |
@@ -629,7 +630,7 @@ Dashboard требует **HTTP Basic auth** (имя пользователя: �
 <summary>Демо: dashboard</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/assets/dashboard.gif" alt="Demo: monitoring dashboard" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/dashboard.gif" alt="Demo: monitoring dashboard" width="80%">
 </p>
 <br>
 
@@ -673,12 +674,14 @@ docker run --rm \
 
 ---
 
+[Telegram WSS, Cloudflare и HTTP/2](docs/telegram-ws.md) входят в каждый бинарник и Docker-образ. Выберите `type = "telegram_ws"` в `config.toml`: отдельный флаг сборки не нужен. TLS, HTTP/2 и CA-набор встроены в статический бинарник.
+
 ## Локальная сборка
 
-Нужен [Zig 0.16.0](https://ziglang.org/download/).
+Нужны [Zig 0.16.0](https://ziglang.org/download/), Perl, Make и pkg-config. Первая сборка скачивает закреплённые исходники TLS/HTTP2 и CA-набор.
 
 ```bash
-git clone https://github.com/sleep3r/mtproto.zig.git
+git clone https://github.com/renvalis/mtproto.zig.git
 cd mtproto.zig
 
 make build
@@ -707,12 +710,12 @@ scp zig-out/bin/mtproto-proxy root@<SERVER>:/opt/mtproto-proxy/
 Docker поддерживается для тестов, упаковочных экспериментов и простых сценариев, где нужен только бинарник прокси. Основной production-путь проекта — нативный Linux host под управлением `mtbuddy`: DPI-модули, tunnel pool failover, policy routing, Nginx masking, nfqws и recovery timers являются host-level интеграциями и не представлены контейнером полностью.
 
 ```bash
-docker pull ghcr.io/sleep3r/mtproto.zig:latest
+docker pull ghcr.io/renvalis/mtproto.zig:latest
 
 docker run --rm \
   -p 443:443 \
   -v "$PWD/config.toml:/etc/mtproto-proxy/config.toml:ro" \
-  ghcr.io/sleep3r/mtproto.zig:latest
+  ghcr.io/renvalis/mtproto.zig:latest
 ```
 
 MiddleProxy для медиа/промо чувствителен к исходному source IP:port, который попадает в encrypted handshake. Исходящий IPv4 **авто-детектится через настроенный upstream** — direct зондирует хост, `socks5`/`http` зондирует через прокси (узнаёт exit-IP SOCKS), `tunnel` — через интерфейс туннеля, — поэтому SOCKS/туннель + ad-tag работают без ручной настройки. Для Docker-деплоя с MiddleProxy лучше использовать host networking (`--network host`) или нативный `mtbuddy install`. `[server].public_ip` — только входящий адрес для клиентов; задавайте `[server].middle_proxy_nat_ip` лишь для переопределения, если авто-детект не видит реальный egress. Bridge или удаленный NAT, переписывающий source port, всё равно может ломать MiddleProxy handshake.

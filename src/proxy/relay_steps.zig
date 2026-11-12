@@ -1,5 +1,6 @@
 const std = @import("std");
 const posix = std.posix;
+const ws_integration = @import("../extensions/ws_transport/integration.zig");
 const constants = @import("../protocol/constants.zig");
 const socket_utils = @import("socket_utils.zig");
 
@@ -99,6 +100,7 @@ fn consumeClientTlsBytes(
                 const output = try mp.encapsulateC2S(payload, scratch);
                 if (output.len > 0) _ = try queue_upstream(slot, allocator, output);
             } else if (slot.tg_encryptor) |*enc| {
+                try ws_integration.observePlain(slot, payload);
                 enc.apply(payload);
                 _ = try queue_upstream(slot, allocator, payload);
             } else return error.MissingUpstreamCipher;
@@ -229,6 +231,10 @@ pub fn startRelay(
                 };
             }
         } else if (slot.tg_encryptor) |*enc| {
+            ws_integration.observePlain(slot, buf) catch {
+                close_slot(loop, slot, "WS packet framing failed");
+                return;
+            };
             enc.apply(buf);
             _ = queue_upstream(loop, slot, buf) catch {
                 close_slot(loop, slot, "queue pipelined direct payload failed");

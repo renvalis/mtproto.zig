@@ -431,7 +431,7 @@ def ensure_log_thread():
         if shutil.which("journalctl") is None or not Path("/run/systemd/system").is_dir():
             print("[dashboard] systemd journal unavailable; live logs disabled", file=sys.stderr)
             try:
-                _log_buffer.put_nowait({"text": "Systemd journal unavailable; live logs disabled", "cls": "error", "ts": time.strftime("%H:%M:%S")})
+                _log_buffer.put_nowait({"text": "Live logs require systemd. In Docker use: docker compose -f hack/docker/compose.local.yml logs -f proxy", "cls": "info", "ts": time.strftime("%H:%M:%S")})
             except queue.Full:
                 pass
             return
@@ -592,8 +592,11 @@ def _proxy_stats() -> dict:
         s["unassigned_active"] = max(active_total - users_active_total, 0)
 
         return s
-    except Exception as exc:
-        return {"error": f"Proxy statistics unavailable ({type(exc).__name__})"}
+    except Exception:
+        try:
+            return _proxy_stats_from_metrics()
+        except Exception as exc:
+            return {"error": f"Proxy statistics unavailable ({type(exc).__name__})"}
 
 
 def _proxy_listening(port: int) -> bool:
@@ -1457,6 +1460,9 @@ def _upstream_target_from_cfg(cfg: dict, policy: dict) -> str:
         pool = _effective_tunnel_pool(cfg)
         return f"mark 200 -> table 200 (pool {', '.join(pool)})"
 
+    if upstream_type == "telegram_ws":
+        return "Telegram WSS / Cloudflare / HTTP2 media"
+
     if upstream_type == "direct":
         return "direct host routing"
 
@@ -1596,25 +1602,23 @@ def _routing_status() -> dict:
 
 
 def _unit_active(unit: str) -> bool:
-    return (
-        subprocess.run(
-            ["systemctl", "is-active", "--quiet", unit],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        ).returncode
-        == 0
-    )
+    return _unit_state(unit, "is-active")
 
 
 def _unit_enabled(unit: str) -> bool:
-    return (
-        subprocess.run(
-            ["systemctl", "is-enabled", "--quiet", unit],
+    return _unit_state(unit, "is-enabled")
+
+
+def _unit_state(unit: str, operation: str) -> bool:
+    try:
+        return subprocess.run(
+            ["systemctl", operation, "--quiet", unit],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-        ).returncode
-        == 0
-    )
+            timeout=3,
+        ).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def _probe_mask_endpoint(target: str, port: int) -> bool:
@@ -1726,6 +1730,53 @@ def _traffic_http_opener():
     return opener
 
 
+def _read_proxy_metrics(metrics: dict) -> str:
+    if not metrics.get("enabled", False):
+        raise ValueError("metrics_disabled")
+    host = str(metrics.get("host") or "127.0.0.1")
+    if host in ("0.0.0.0", "::"):
+        host = "127.0.0.1" if host == "0.0.0.0" else "::1"
+    # Only IP literals from the local config, no credentials, redirects or env proxies.
+    ip = ipaddress.ip_address(host)
+    authority = f"[{ip}]" if ip.version == 6 else str(ip)
+    port = int(metrics.get("port", 9400))
+    if not 1 <= port <= 65535:
+        raise ValueError("metrics_unavailable")
+    with _traffic_http_opener().open(f"http://{authority}:{port}/metrics", timeout=3) as response:
+        raw = response.read(4 * 1024 * 1024 + 1)
+    if len(raw) > 4 * 1024 * 1024:
+        raise ValueError("metrics_unavailable")
+    return raw.decode()
+
+
+def _proxy_stats_from_metrics() -> dict:
+    path = _find_config_path()
+    if path is None or tomllib is None:
+        raise ValueError("config_unavailable")
+    cfg = tomllib.loads(_toml_source(path.read_text()))
+    text = _read_proxy_metrics(cfg.get("metrics", {}))
+    values = {name: int(value) for name, value in
+              re.findall(r"^(mtproto_\w+) (\d+)$", text, re.M)}
+    if "mtproto_connections_active" not in values or "mtproto_connections_max" not in values:
+        raise ValueError("incomplete_proxy_metrics")
+    fields = {
+        "active": "connections_active", "max": "connections_max",
+        "hs_inflight": "handshakes_inflight", "total": "connections_total",
+        "accepted": "connections_accepted_total", "closed": "connections_closed_total",
+        "rate_drops": "drops_rate_limit_total", "cap_drops": "drops_capacity_total",
+        "sat_drops": "drops_saturation_total", "pool_drops": "drops_pool_total",
+        "hs_budget_drops": "drops_handshake_budget_total", "hs_timeout": "handshake_timeouts_total",
+    }
+    result = {name: values.get("mtproto_" + metric, 0) for name, metric in fields.items()}
+    pattern = r'^mtproto_user_connections_active\{user=("(?:[^"\\]|\\.)*")\} (\d+)$'
+    result["per_user_active"] = {json.loads(label): int(value)
+                                 for label, value in re.findall(pattern, text, re.M)}
+    result["users_active_total"] = sum(result["per_user_active"].values())
+    result["unassigned_active"] = max(0, result["active"] - result["users_active_total"])
+    result["source"] = "metrics"
+    return result
+
+
 def _traffic_sample():
     global _traffic_snapshot, _traffic_collection_paused
     try:
@@ -1739,24 +1790,9 @@ def _traffic_sample():
             reason = "history_disabled" if history_enabled is False else "history_config_invalid"
             _traffic_snapshot = {"available": False, "error": reason, "items": {}}
             return
-        metrics = cfg.get("metrics", {})
-        if not metrics.get("enabled", False):
+        if not cfg.get("metrics", {}).get("enabled", False):
             _traffic_collection_paused = True
-            raise ValueError("metrics_disabled")
-        host = str(metrics.get("host") or "127.0.0.1")
-        if host in ("0.0.0.0", "::"):
-            host = "127.0.0.1" if host == "0.0.0.0" else "::1"
-        # Only IP literals from the local config, no credentials, redirects or env proxies.
-        ip = ipaddress.ip_address(host)
-        authority = f"[{ip}]" if ip.version == 6 else str(ip)
-        port = int(metrics.get("port", 9400))
-        if not 1 <= port <= 65535:
-            raise ValueError("metrics_unavailable")
-        with _traffic_http_opener().open(f"http://{authority}:{port}/metrics", timeout=3) as response:
-            raw = response.read(4 * 1024 * 1024 + 1)
-        if len(raw) > 4 * 1024 * 1024:
-            raise ValueError("metrics_unavailable")
-        process, counters = parse_metrics(raw.decode())
+        process, counters = parse_metrics(_read_proxy_metrics(cfg.get("metrics", {})))
         access = _load_proxy_runtime_config()
         users = {**access.get("disabled_users", {}), **access.get("users", {})}
         # Reusing a username with a different secret starts a new history.

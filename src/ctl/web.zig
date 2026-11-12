@@ -1047,7 +1047,7 @@ fn unitContent() []const u8 {
     return
     \\[Unit]
     \\Description=MTProto WEB proxy relay (Telegram Desktop 7.1+)
-    \\Documentation=https://github.com/sleep3r/mtproto.zig
+    \\Documentation=https://github.com/renvalis/mtproto.zig
     \\After=network-online.target mtproto-proxy.service
     \\Wants=network-online.target
     \\StartLimitIntervalSec=0

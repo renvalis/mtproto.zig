@@ -13,6 +13,7 @@ pub const ConnectionPhase = enum {
     reading_mtproto_tls_header,
     reading_mtproto_tls_body,
     connecting_upstream,
+    ws_handshake,
     // SOCKS5 proxy handshake sub-phases
     proxy_socks5_greeting,
     proxy_socks5_greeting_resp,

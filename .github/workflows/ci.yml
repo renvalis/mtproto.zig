@@ -23,6 +23,9 @@ jobs:
         with:
           version: 0.16.0
 
+      - name: Install native build tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends perl make pkg-config
+
       - name: Run tests
         run: zig build test
 
@@ -127,6 +130,9 @@ jobs:
         with:
           version: 0.16.0
 
+      - name: Install native build tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends perl make pkg-config
+
       - name: Run E2E harness
         run: zig build e2e
 
@@ -154,6 +160,9 @@ jobs:
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
         with:
           version: 0.16.0
+
+      - name: Install native build tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends perl make pkg-config
 
       - name: Run microbenchmark
         run: zig build -Doptimize=ReleaseFast bench 2>&1 | tee bench-output.txt

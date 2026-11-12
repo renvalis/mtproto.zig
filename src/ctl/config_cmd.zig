@@ -393,6 +393,10 @@ fn runNetworkDoctor(
     switch (cfg.upstream_mode) {
         .socks5, .http => runNetworkDoctorProxy(ui, allocator, cfg, errors, warnings),
         .tunnel => runNetworkDoctorTunnel(ui, allocator, cfg, errors, warnings),
+        .telegram_ws => {
+            ui.warn("Telegram WS uses bundled TLS and CA roots; direct TCP probes do not validate this route");
+            warnings.* += 1;
+        },
         .auto, .direct => runNetworkDoctorDirect(ui, allocator, cfg, errors, warnings),
     }
 
@@ -733,6 +737,15 @@ fn printEffective(ui: *Tui, allocator: std.mem.Allocator, path: []const u8) !voi
     ui.writeRaw("[upstream]\n");
     ui.print("type = \"{s}\"\n", .{@tagName(cfg.upstream_mode)});
     ui.print("allow_direct_fallback = {}\n", .{cfg.allow_direct_fallback});
+    if (cfg.upstream_mode == .telegram_ws) {
+        ui.writeRaw("\n[upstream.telegram_ws]\n");
+        ui.print("fronting = {}\nfronting_sni = \"{s}\"\nfronting_verify_hostname = {}\npool_size = {d}\nhandshake_timeout_sec = {d}\n", .{ cfg.telegram_ws.fronting, cfg.telegram_ws.sni(), cfg.telegram_ws.fronting_verify_hostname, cfg.telegram_ws.pool_size, cfg.telegram_ws.handshake_timeout_sec });
+        ui.print("cf_fallback = {}\ncf_first = {}\ncf_h2_media = {}\ncf_domains = \"{s}\"\n", .{ cfg.telegram_ws.cf_fallback, cfg.telegram_ws.cf_first, cfg.telegram_ws.cf_h2_media, cfg.telegram_ws.cfDomains() });
+        for (cfg.telegram_ws.dc_ips, 0..) |ip, i| {
+            ui.print("dc{d}_ip = \"{d}.{d}.{d}.{d}\"\n", .{ if (i == 5) @as(usize, 203) else i + 1, ip[0], ip[1], ip[2], ip[3] });
+        }
+    }
+
     if (cfg.upstream_proxy_host) |host| {
         ui.print("proxy_host = \"{s}\"\n", .{host});
     }

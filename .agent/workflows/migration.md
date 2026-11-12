@@ -11,7 +11,7 @@ Use when current server is blocked/degraded and traffic must move quickly.
 Install and start proxy stack on new host:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
 ```
 
 If you use optional IPv6 hopping automation, provide required environment variables expected by your deploy scripts.

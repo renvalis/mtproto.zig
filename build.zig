@@ -25,7 +25,9 @@ pub fn build(b: *std.Build) void {
         "Minisign public key (base64) for release signature verification",
     ) orelse pinned_minisign_pubkey;
 
+    const ws_dependencies = @import("src/extensions/ws_transport/build.zig").dependencies(b, target);
     const build_options = b.addOptions();
+    build_options.addOption(bool, "telegram_ws", true);
     build_options.addOption([]const u8, "minisign_pubkey", minisign_pubkey);
     build_options.addOption([]const u8, "proxy_service", @embedFile("deploy/mtproto-proxy.service"));
     const build_options_mod = build_options.createModule();
@@ -56,11 +58,14 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = dataplane_optimize,
         .imports = &.{
+            .{ .name = "build_options", .module = build_options_mod },
             .{ .name = "version", .module = version_mod },
             .{ .name = "linux_io", .module = linux_io_mod },
             .{ .name = "child_process", .module = child_process_mod },
         },
     });
+
+    exe_mod.strip = b.option(bool, "strip", "Strip proxy debug symbols") orelse false;
 
     const exe = b.addExecutable(.{
         .name = "mtproto-proxy",
@@ -69,11 +74,13 @@ pub fn build(b: *std.Build) void {
 
     // Exploit mitigation on the internet-facing proxy: position-independent
     // executable (ASLR). Full RELRO is already Zig's default (link_z_relro =
-    // true, link_z_lazy = false → -z relro -z now). Stack canaries are NOT
-    // enabled because they require libc (__stack_chk_fail) and this binary is
-    // deliberately libc-free; ReleaseSafe bounds/overflow checks cover the data
-    // plane instead.
+    // true, link_z_lazy = false → -z relro -z now). TLS/H2 libraries are
+    // statically linked; ReleaseSafe bounds/overflow checks cover the data plane.
     exe.pie = true;
+    if (ws_dependencies) |deps| {
+        deps.attach(exe_mod);
+        exe.linkage = .static;
+    }
 
     b.installArtifact(exe);
 
@@ -193,6 +200,8 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    test_mod.addImport("build_options", build_options_mod);
+    if (ws_dependencies) |deps| deps.attach(test_mod);
     const unit_tests = b.addTest(.{
         .root_module = test_mod,
     });

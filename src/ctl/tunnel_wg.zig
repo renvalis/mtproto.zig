@@ -232,7 +232,7 @@ pub fn execute(ui: *Tui, allocator: std.mem.Allocator, opts: TunnelOpts) !void {
     const svc_content =
         \\[Unit]
         \\Description=MTProto Proxy (Zig) via Tunnel Policy Routing
-        \\Documentation=https://github.com/sleep3r/mtproto.zig
+        \\Documentation=https://github.com/renvalis/mtproto.zig
         \\After=network-online.target
         \\Wants=network-online.target
         \\
@@ -1220,7 +1220,7 @@ fn installTunnelPoolUnits(ui: *Tui, allocator: std.mem.Allocator) void {
     const service =
         \\[Unit]
         \\Description=MTProto tunnel pool failover
-        \\Documentation=https://github.com/sleep3r/mtproto.zig
+        \\Documentation=https://github.com/renvalis/mtproto.zig
         \\After=network-online.target
         \\Wants=network-online.target
         \\

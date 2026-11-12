@@ -1,0 +1,19 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    MTPROTO_DASHBOARD_TOKEN_FILE=/data/dashboard.token
+
+RUN pip install --no-cache-dir \
+    fastapi==0.115.6 uvicorn==0.34.0 psutil==6.1.1 \
+    websockets==14.1 starlette==0.41.3
+
+WORKDIR /opt/mtproto-proxy/monitor
+COPY src/ctl/dashboard_assets/server.py src/ctl/dashboard_assets/traffic.py ./
+COPY src/ctl/dashboard_assets/static/ ./static/
+COPY src/version.zig /opt/mtproto-proxy/version.zig
+RUN mkdir -p /data \
+    && ln -s /data/traffic.sqlite3 traffic.sqlite3
+
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "61208", "--log-level", "warning"]

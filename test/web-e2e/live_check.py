@@ -203,7 +203,7 @@ def tls_records(buf: bytes):
         out.append((buf[i], buf[i+5:i+5+ln])); i += 5+ln
     return out, buf[i:]
 
-def faketls_e2e(name: str, dc: int = 2):
+def faketls_e2e(name: str, dc: int = 2, *, reply_timeout: float = 15):
     """FakeTLS ClientHello -> ServerHello flight -> CCS+AppData(obf init + req_pq) -> res_pq."""
     secret = bytes.fromhex(USERS[name])
     s = socket.create_connection((HOST, PORT), timeout=10)
@@ -225,7 +225,7 @@ def faketls_e2e(name: str, dc: int = 2):
     app = o.first + o.send(padded_frame(msg))
     s.sendall(b"\x14\x03\x03\x00\x01\x01" + b"\x17\x03\x03" + struct.pack(">H", len(app)) + app)
     plain = b""; buf = b""; t0 = time.time()
-    while time.time() - t0 < 15:
+    while time.time() - t0 < reply_timeout:
         try: c = s.recv(65536)
         except socket.timeout: continue
         if not c: break

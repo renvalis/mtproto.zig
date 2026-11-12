@@ -67,11 +67,18 @@ RUN apt-get update \
 
 WORKDIR /build
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends perl make pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY build.zig build.zig.zon ./
 COPY src ./src
 COPY deploy ./deploy
 
-RUN set -eu \
+RUN --mount=type=cache,target=/root/.cache/zig \
+    --mount=type=cache,target=/build/.zig-cache \
+    --mount=type=cache,target=/build/zig-pkg \
+    set -eu \
     && arch="${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}" \
     && case "$arch" in \
         amd64|x86_64) \

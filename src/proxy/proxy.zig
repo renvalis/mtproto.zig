@@ -43,6 +43,8 @@ const middle_proxy_handshake = @import("middle_proxy_handshake.zig");
 const proxy_upstream_handshake = @import("proxy_upstream_handshake.zig");
 const middle_proxy_fallback = @import("middle_proxy_fallback.zig");
 const middle_proxy_nat = @import("middle_proxy_nat.zig");
+const ws_transport = @import("../extensions/ws_transport/mod.zig");
+const ws_integration = @import("../extensions/ws_transport/integration.zig");
 const dc_nonce = @import("dc_nonce.zig");
 const upstream_failover = @import("upstream_failover.zig");
 const trusted_peers = @import("trusted_peers.zig");
@@ -50,6 +52,7 @@ pub const UserIpLimit = @import("user_ip_limit.zig").UserIpLimit;
 const runtime_log = @import("../runtime_log.zig");
 
 test {
+    _ = ws_transport;
     // Keep extracted proxy submodule tests in the default `zig build test` run.
     _ = @import("subnet_rate_limit.zig");
     _ = @import("handshake_flood_guard.zig");
@@ -309,7 +312,7 @@ fn middleProxyFetchRouteForConfig(cfg: *const Config) MiddleProxyFetchRoute {
         .socks5 => .socks5,
         .http => .http_connect,
         .tunnel => .tunnel,
-        .auto, .direct => .direct,
+        .auto, .direct, .telegram_ws => .direct,
     };
 }
 
@@ -374,7 +377,7 @@ test "middle-proxy reachability probe is skipped on any non-direct egress" {
 /// default true even with use_middle_proxy=false), and the ad-tag RPC (tag),
 /// which only takes effect over a middleproxy handshake.
 fn middleProxyUpdaterNeeded(cfg: *const Config) bool {
-    return cfg.use_middle_proxy or cfg.force_media_middle_proxy or cfg.tag != null;
+    return cfg.upstream_mode != .telegram_ws and (cfg.use_middle_proxy or cfg.force_media_middle_proxy or cfg.tag != null);
 }
 
 /// Whether a specific connection's buildDcConnectPlan call should be handed a
@@ -507,7 +510,7 @@ fn fetchPublicIpProbe(allocator: std.mem.Allocator, cfg: *const Config, url: []c
             const iface = cfg.tunnelCandidateAt(0) orelse cfg.upstream_tunnel_interface orelse "awg0";
             return fetchUrlBytesViaInterface(allocator, url, iface);
         },
-        .auto, .direct => return fetchUrlBytes(allocator, url),
+        .auto, .direct, .telegram_ws => return fetchUrlBytes(allocator, url),
     }
 }
 
@@ -725,6 +728,10 @@ const ConnectionSlot = struct {
     mp_secret_len: usize = 0,
 
     dc_idx: i16 = 0,
+    ws_session: ?*ws_transport.Session = null,
+    ws_attempt: usize = 0,
+    ws_route: ?ws_transport.router.Route = null,
+    ws_direct_fallback: bool = false,
     dc_abs: u16 = 0,
     proto_tag: constants.ProtoTag = .intermediate,
     use_fast_mode: bool = false,
@@ -878,6 +885,7 @@ const ConnectionSlot = struct {
             .reading_mtproto_tls_header,
             .reading_mtproto_tls_body,
             .connecting_upstream,
+            .ws_handshake,
             .proxy_socks5_greeting,
             .proxy_socks5_greeting_resp,
             .proxy_socks5_auth,
@@ -899,6 +907,11 @@ const ConnectionSlot = struct {
     }
 
     fn resetOwnedBuffers(self: *ConnectionSlot, allocator: std.mem.Allocator) void {
+        if (self.ws_session) |session| session.destroy();
+        self.ws_session = null;
+        self.ws_attempt = 0;
+        self.ws_route = null;
+        self.ws_direct_fallback = false;
         if (self.validation_user.len > 0) allocator.free(self.validation_user);
         self.validation_user = "";
         self.validation_user_len = 0;
@@ -1073,6 +1086,9 @@ fn wantedInterests(slot: *const ConnectionSlot, now_ms: i64) SlotInterests {
             want.upstream_out = true;
         },
 
+        .ws_handshake => {
+            want.upstream_in = true;
+        },
         .middle_proxy_handshake => {
             want.upstream_out = want.upstream_out or
                 slot.mp_step == .sending_rpc_nonce or
@@ -1583,6 +1599,8 @@ pub const ProxyState = struct {
         self.unlockUserMetricsForRead();
     }
 
+    ws_context: ?*ws_transport.Context = null,
+    ws_routes: ?*ws_transport.Cloudflare = null,
     allocator: std.mem.Allocator,
     config_path: []const u8,
     config: Config,
@@ -1827,7 +1845,7 @@ pub const ProxyState = struct {
         var default_middle_proxy_secret = [_]u8{0} ** 256;
         @memcpy(default_middle_proxy_secret[0..middleproxy.proxy_secret.len], middleproxy.proxy_secret[0..]);
 
-        const detected_nat_ip4 = if (cfg.datacenter_override == null)
+        const detected_nat_ip4 = if (cfg.datacenter_override == null and cfg.upstream_mode != .telegram_ws)
             middle_proxy_nat.detectIpv4(allocator, &cfg, detectAwgEndpointIpv4, detectPublicIpv4ViaEgress)
         else
             null;
@@ -1836,7 +1854,7 @@ pub const ProxyState = struct {
         // which needs the egress public IP. If MiddleProxy is wanted but we couldn't learn
         // that IP, say so loudly — otherwise the proxy silently falls back to direct DC
         // (no ad-tag) and operators never notice.
-        if (detected_nat_ip4 == null and (cfg.use_middle_proxy or cfg.force_media_middle_proxy or cfg.tag != null)) {
+        if (cfg.upstream_mode != .telegram_ws and detected_nat_ip4 == null and (cfg.use_middle_proxy or cfg.force_media_middle_proxy or cfg.tag != null)) {
             log.warn("MiddleProxy/ad-tag is enabled but the egress public IP could not be detected; " ++
                 "the ad-tag (and non-Premium media via ME) may not work. Set [server].middle_proxy_nat_ip " ++
                 "to the IP Telegram sees for this server's egress (the SOCKS/tunnel exit IP when egress isn't direct).", .{});
@@ -1845,7 +1863,16 @@ pub const ProxyState = struct {
         const owned_config_path = try allocator.dupe(u8, config_path);
         errdefer allocator.free(owned_config_path);
 
+        const ws_context = if (cfg.upstream_mode == .telegram_ws) try ws_transport.Context.create(allocator) else null;
+        errdefer if (ws_context) |ctx| ctx.destroy(allocator);
+        const ws_routes = if (cfg.upstream_mode == .telegram_ws and cfg.telegram_ws.cf_fallback)
+            try ws_transport.Cloudflare.create(allocator, dns, cfg.telegram_ws.cfDomains())
+        else
+            null;
+        errdefer if (ws_routes) |routes| allocator.destroy(routes);
         var result: ProxyState = .{
+            .ws_context = ws_context,
+            .ws_routes = ws_routes,
             .allocator = allocator,
             .config_path = owned_config_path,
             .config = cfg,
@@ -1959,7 +1986,7 @@ pub const ProxyState = struct {
                         log.warn("upstream.type=http but proxy host/port not configured; falling back to direct", .{});
                         break :upblk upstream_mod.Upstream.initDirect();
                     },
-                    .direct, .auto => break :upblk upstream_mod.Upstream.initDirect(),
+                    .direct, .auto, .telegram_ws => break :upblk upstream_mod.Upstream.initDirect(),
                 }
             },
             .tunnel_info = blk: {
@@ -1972,6 +1999,7 @@ pub const ProxyState = struct {
                         log.info("Upstream mode: tunnel (socket policy routing via SO_MARK={d})", .{tunnel_socket_mark});
                         break :blk tunnel_mod.Tunnel{ .tag = .tunnel };
                     },
+                    .telegram_ws => break :blk tunnel_mod.Tunnel{ .tag = .none },
                     .socks5 => {
                         break :blk tunnel_mod.Tunnel{ .tag = .socks5 };
                     },
@@ -1993,6 +2021,8 @@ pub const ProxyState = struct {
     }
 
     pub fn deinit(self: *ProxyState) void {
+        if (self.ws_context) |ctx| ctx.destroy(self.allocator);
+        if (self.ws_routes) |routes| self.allocator.destroy(routes);
         self.dns.destroy();
         self.middle_proxy_updater_shutdown.store(true, .release);
         if (self.middle_proxy_updater_thread) |thread| {
@@ -2127,7 +2157,7 @@ pub const ProxyState = struct {
     }
 
     pub fn run(self: *ProxyState) !void {
-        log.info("Effective egress: {s}", .{self.tunnel_info.name()});
+        log.info("Effective egress: {s}", .{if (self.config.upstream_mode == .telegram_ws) "telegram_ws" else self.tunnel_info.name()});
         if (builtin.os.tag != .linux) return error.UnsupportedOperatingSystem;
         const io_ctx = std.Io.Threaded.global_single_threaded.io();
         var signal_controller = try SignalController.init();
@@ -2728,6 +2758,7 @@ pub const ProxyState = struct {
 };
 
 const EventLoop = struct {
+    ws_pool: ?*ws_transport.Pool = null,
     state: *ProxyState,
     epoll_fd: posix.fd_t,
     listen_fd: posix.fd_t,
@@ -2804,6 +2835,8 @@ const EventLoop = struct {
         };
         errdefer loop.pool.deinit();
 
+        if (state.ws_context) |ctx| loop.ws_pool = try ws_transport.Pool.create(state.allocator, epoll_fd, ctx, state.config.telegram_ws, state.ws_routes);
+        errdefer if (loop.ws_pool) |pool| pool.destroy();
         try loop.addFd(listen_fd, true, false);
         // Only the signal-owning worker has a real signalfd; other SO_REUSEPORT
         // workers pass -1 and learn about shutdown via state.shutting_down.
@@ -2812,6 +2845,8 @@ const EventLoop = struct {
     }
 
     fn deinit(self: *EventLoop) void {
+        if (self.ws_pool) |pool| pool.destroy();
+        self.ws_pool = null;
         defer self.flushTrafficCounters();
         for (self.pool.slots) |slot_opt| {
             if (slot_opt) |slot| {
@@ -2841,6 +2876,7 @@ const EventLoop = struct {
     }
 
     fn drainPendingCloses(self: *EventLoop) void {
+        if (self.ws_pool) |pool| pool.drainRetired();
         for (self.pending_close_fds.items) |fd| closeFd(fd);
         self.pending_close_fds.clearRetainingCapacity();
     }
@@ -2917,6 +2953,9 @@ const EventLoop = struct {
                     continue;
                 }
 
+                if (self.ws_pool) |pool| {
+                    if (pool.handle(fd, ev_flags, nowMs())) continue;
+                }
                 const slot = self.pool.getByFd(fd) orelse continue;
                 self.processSlotEvent(slot, fd, ev_flags);
             }
@@ -2965,7 +3004,7 @@ const EventLoop = struct {
             if ((events & linux.EPOLL.OUT) != 0 or (slot.phase == .connecting_upstream and fatal_hangup)) {
                 self.onUpstreamWritable(slot);
             }
-            if (slot.phase == .idle) return;
+            if (slot.phase == .idle or fd != slot.upstream_fd) return;
             if ((events & (linux.EPOLL.IN | linux.EPOLL.RDHUP | linux.EPOLL.HUP)) != 0 and !slot.upstream_read_eof) {
                 self.onUpstreamReadable(slot);
             }
@@ -3671,6 +3710,10 @@ const EventLoop = struct {
     fn onUpstreamReadable(self: *EventLoop, slot: *ConnectionSlot) void {
         slot.last_activity_ms = nowMs();
 
+        if (slot.ws_session != null and (slot.phase == .ws_handshake or slot.phase == .relaying)) {
+            self.onWsReadable(slot);
+            return;
+        }
         switch (slot.phase) {
             .proxy_socks5_greeting_resp,
             .proxy_socks5_auth_resp,
@@ -3714,7 +3757,7 @@ const EventLoop = struct {
                     slot.proxy_handshake_pos = 0;
                 }
             },
-            .writing_dc_nonce, .relaying, .mask_relaying, .middle_proxy_handshake => {
+            .ws_handshake, .writing_dc_nonce, .relaying, .mask_relaying, .middle_proxy_handshake => {
                 const had_pending = slot.hasUpstreamPending();
                 if (flushUpstreamPending(slot, self.state.allocator)) |_| {} else |err| {
                     log.debug("[{d}] upstream flush error: {any}", .{ slot.conn_id, err });
@@ -3874,7 +3917,7 @@ const EventLoop = struct {
         const msg_peek: u32 = 0x2; // MSG_PEEK (Linux)
         const rc = posix.system.recvfrom(slot.client_fd, &peek, peek.len, msg_peek, null, null);
         const n: usize = switch (posix.errno(rc)) {
-            .SUCCESS => rc,
+            .SUCCESS => @intCast(rc),
             .AGAIN, .INTR => return .wait,
             else => {
                 self.closeSlot(slot, "proxy header read error");
@@ -4447,6 +4490,21 @@ const EventLoop = struct {
             null;
 
         var plan = buildDcConnectPlan(&self.state.config, dc_abs, slot.dc_idx, if (snapshot) |*s| s else null, result.user);
+        if (self.state.config.upstream_mode == .telegram_ws) {
+            const route = (ws_transport.router.next(&self.state.config.telegram_ws, self.state.ws_routes, dc_abs, slot.dc_idx < 0, 0) catch {
+                self.closeSlot(slot, "unsupported WS DC");
+                return;
+            }) orelse {
+                self.closeSlot(slot, "no resolved WS routes");
+                return;
+            };
+            slot.ws_route = route;
+            slot.ws_attempt = route.attempt;
+            plan.candidates[0] = route.address;
+            plan.count = 1;
+            plan.use_middle_proxy = false;
+            plan.direct_fallback = null;
+        }
         self.endpoint_penalties.prioritize(plan.candidates[0..plan.count], nowMs());
         if (plan.count == 0) {
             self.closeSlot(slot, "no upstream candidates");
@@ -4517,7 +4575,7 @@ const EventLoop = struct {
         slot.dc_abs = @intCast(dc_abs);
         slot.use_middle_proxy = plan.use_middle_proxy;
         slot.is_media_path = plan.is_media_path;
-        slot.use_fast_mode = self.state.config.fast_mode and !slot.use_middle_proxy and (dc_abs >= 1 and dc_abs <= constants.tg_datacenters_v4.len);
+        slot.use_fast_mode = self.state.config.upstream_mode != .telegram_ws and self.state.config.fast_mode and !slot.use_middle_proxy and (dc_abs >= 1 and dc_abs <= constants.tg_datacenters_v4.len);
         slot.direct_fallback_addr = plan.direct_fallback;
         slot.direct_fallback_used = false;
 
@@ -4546,6 +4604,30 @@ const EventLoop = struct {
         slot.upstream_candidate_next = 1;
         slot.current_upstream_addr = candidates[0];
 
+        if (self.ws_pool) |pool| {
+            if (pool.take(slot.dc_abs, slot.dc_idx < 0, @intFromEnum(slot.proto_tag), nowMs())) |ready| {
+                log.debug("[{d}] Telegram WS pool hit dc={d} media={}", .{ slot.conn_id, slot.dc_abs, slot.dc_idx < 0 });
+                slot.ws_session = ready.session;
+                slot.ws_attempt = ready.attempt;
+                slot.ws_route = ready.session.route;
+                slot.upstream_fd = ready.fd;
+                slot.upstream_kind = .dc;
+                slot.phase = .ws_handshake;
+                self.addUpstreamFd(slot, ready.fd, true, false) catch {
+                    self.closeSlot(slot, "WS pool fd registration failed");
+                    return;
+                };
+                self.pool.mapFd(ready.fd, slot.index) catch {
+                    self.closeSlot(slot, "WS pool fd mapping failed");
+                    return;
+                };
+                configureRelaySocket(slot.client_fd);
+                configureRelaySocket(ready.fd);
+                self.sendDcNonce(slot);
+                if (slot.phase != .idle and !slot.hasUpstreamPending()) self.onDcNonceWritable(slot);
+                return;
+            }
+        }
         self.startConnectUpstream(slot, candidates[0], .dc) catch |err| {
             if (!self.tryNextDcEndpoint(slot, err)) self.closeSlot(slot, "upstream connect start failed");
         };
@@ -4757,6 +4839,11 @@ const EventLoop = struct {
             return;
         }
 
+        if (self.state.config.upstream_mode == .telegram_ws and !slot.ws_direct_fallback) {
+            self.startWsHandshake(slot);
+            return;
+        }
+
         // Check if we need a proxy handshake before proceeding to DC.
         if (slot.proxy_target_addr != null) {
             switch (self.state.upstream) {
@@ -4778,6 +4865,33 @@ const EventLoop = struct {
         }
 
         self.sendDcNonce(slot);
+    }
+
+    const ws_hooks = .{
+        .close = closeSlot,
+        .cleanup = cleanupFailedUpstreamConnect,
+        .connect = startConnectUpstream,
+        .nonce = sendDcNonce,
+        .nonce_writable = onDcNonceWritable,
+        .half_close = beginRelayHalfClose,
+        .queue_client = queueClient,
+        .queue_tls = queueTlsAppRecords,
+    };
+
+    fn startWsHandshake(self: *EventLoop, slot: *ConnectionSlot) void {
+        ws_integration.startHandshake(self, slot, ws_hooks);
+    }
+
+    fn failWs(self: *EventLoop, slot: *ConnectionSlot, err: anyerror) void {
+        ws_integration.fail(self, slot, err, ws_hooks);
+    }
+
+    fn retryWs(self: *EventLoop, slot: *ConnectionSlot) bool {
+        return ws_integration.retry(self, slot, ws_hooks);
+    }
+
+    fn onWsReadable(self: *EventLoop, slot: *ConnectionSlot) void {
+        ws_integration.readable(self, slot, ws_hooks);
     }
 
     fn startSocks5Handshake(self: *EventLoop, slot: *ConnectionSlot) void {
@@ -4873,6 +4987,7 @@ const EventLoop = struct {
     }
 
     fn tryNextDcEndpoint(self: *EventLoop, slot: *ConnectionSlot, err: anyerror) bool {
+        if (self.state.config.upstream_mode == .telegram_ws) return self.retryWs(slot);
         slot.proxy_candidate_index = 0;
         const candidates = slot.upstreamCandidates();
         if (candidates.len > 0) self.endpoint_penalties.failed(slot.current_upstream_addr orelse candidates[@min(slot.upstream_candidate_next -| 1, candidates.len - 1)], nowMs());
@@ -5002,6 +5117,10 @@ const EventLoop = struct {
                 };
             }
         } else if (slot.tg_encryptor) |*enc| {
+            ws_integration.observePlain(slot, payload) catch {
+                self.closeSlot(slot, "WS packet framing failed");
+                return;
+            };
             enc.apply(payload);
             _ = proxyHandshakeQueueUpstream(self, slot, payload) catch {
                 self.closeSlot(slot, "direct obfuscated c2s queue failed");
@@ -5150,6 +5269,7 @@ const EventLoop = struct {
 
     fn runTimers(self: *EventLoop) void {
         const now_ms = nowMs();
+        if (!self.shutting_down) if (self.ws_pool) |pool| pool.tick(now_ms);
 
         const hi: usize = @intCast(self.pool.allocated_hi);
         if (hi == 0) return;
@@ -5167,6 +5287,10 @@ const EventLoop = struct {
             const slot = slot_opt orelse continue;
             if (slot.phase == .idle) continue;
 
+            if (slot.phase == .ws_handshake and now_ms - slot.upstream_connect_started_ms > secondsToMs(self.state.config.telegram_ws.handshake_timeout_sec)) {
+                self.failWs(slot, error.WsHandshakeTimeout);
+                continue;
+            }
             // Per-endpoint upstream connect deadline. Fires only while a connect() is still
             // in flight; lets failover advance to the next DC endpoint quickly instead of
             // burning the whole (global) handshake_timeout_sec on one black-holed endpoint.
@@ -5547,6 +5671,10 @@ fn slotQueueClientPair(slot: *ConnectionSlot, allocator: std.mem.Allocator, firs
 
 fn slotQueueUpstream(slot: *ConnectionSlot, allocator: std.mem.Allocator, data: []const u8) !bool {
     _ = allocator;
+    if (slot.ws_session) |session| {
+        try session.send(data);
+        return ws_integration.flushWire(slot);
+    }
     return queue_io.queueOrWriteMsg(
         slot.upstream_fd,
         &slot.upstream_queue,

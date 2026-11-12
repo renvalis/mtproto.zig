@@ -6,9 +6,9 @@
 
 A tiny Telegram proxy you run on your own server. It hides inside ordinary HTTPS, so censorship can't find it — and your family can't lose it. One command to set up, one link to share.
 
-`177 KB · under 1 MB RAM · 0 dependencies` — yes, it's that lean *(details below ↓)*
+`One binary · FakeTLS · WSS · Cloudflare · HTTP/2`
 
-<sub>Technically: a tiny, dependency-free MTProto proxy in Zig that disguises Telegram traffic as standard TLS 1.3 HTTPS.</sub>
+<sub>Technically: an MTProto proxy with bundled TLS/HTTP2 in Zig that disguises Telegram traffic as standard TLS 1.3 HTTPS.</sub>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Zig](https://img.shields.io/badge/zig-0.16.0-f7a41d.svg?logo=zig&logoColor=white)](https://ziglang.org)
@@ -48,7 +48,7 @@ Most MTProto proxies are large, dependency-heavy, and use lots of memory. This o
 
 | Proxy | Language | Binary | Baseline RSS | Startup | Dependencies |
 |---|---|---:|---:|---|---|
-| **mtproto.zig** | Zig | **177 KB** | **0.75 MB** | **< 10 ms** | **0** |
+| **mtproto.zig** | Zig | Bundled TLS/H2 | — | — | Static TLS/H2 libraries |
 | Official MTProxy | C | 524 KB | 8.0 MB | < 10 ms | openssl, zlib |
 | Telemt | Rust | 15 MB | 12.1 MB | ~ 5-6 s | 423 crates |
 | mtg | Go | 13 MB | 11.6 MB | ~ 30 ms | 78 modules |
@@ -59,7 +59,7 @@ Most MTProto proxies are large, dependency-heavy, and use lots of memory. This o
 
 We chose Zig because it provides the raw performance and micro-footprint of C, but without the memory unsafety or build-system nightmares:
 - **No hot-path allocations:** Connection-slot bookkeeping is pre-sized at startup; slot structs and their heavy buffers are created on first use and reused, so the relay path never allocates per byte. There is no garbage collector dropping frames under heavy load.
-- **Hermetic cross-compilation:** Run `zig build` on macOS, and out comes a statically linked Linux binary. No Docker, no `glibc` version mismatches.
+- **Cross-compilation:** Build with an explicit Linux target from macOS or Linux. TLS and HTTP/2 libraries are compiled and linked into the binary.
 - **Comptime:** Costly operations like protocol definition mapping, endianness conversions, and bilingual string lookup for `mtbuddy` are resolved during compilation, giving instant startup times.
 
 **You don't need to understand any of the names below — the default install turns them all on for you.** Under the hood, the proxy stacks more anti-censorship techniques than any other MTProto proxy, and keeps adapting as the blocks get smarter:
@@ -89,10 +89,10 @@ All installation, updates, and management are done through **mtbuddy** — a nat
 ### One command
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
 
 # Explicitly allow unsigned bootstrap mode (not recommended)
-curl -fsSL https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
 # or: MTPROTO_INSECURE=1
 ```
 
@@ -132,7 +132,7 @@ sudo mtbuddy --interactive
 <summary>Demo: interactive installer</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/assets/buddy.gif" alt="Demo: interactive installer" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/buddy.gif" alt="Demo: interactive installer" width="80%">
 </p>
 <br>
 
@@ -300,6 +300,7 @@ The proxy supports multiple ways to route outgoing connections to Telegram DC se
 | `tunnel` | Direct connect with `SO_MARK=200` policy-routed via a VPN tunnel pool | DCs blocked by the ISP |
 | `socks5` | Route through an external SOCKS5 proxy with optional auth | Existing proxy infrastructure |
 | `http` | Route through an HTTP CONNECT proxy with optional auth | Corporate proxy environments |
+| `telegram_ws` | Built-in WSS, Cloudflare fallback and HTTP/2 media routing | Direct Telegram routes are blocked |
 
 ### VPN tunnel
 
@@ -388,7 +389,7 @@ password = "secret"
 
 > **Note:** DC-bound relay traffic and MiddleProxy metadata refreshes (`getProxyConfig` / `getProxySecret`) use the configured upstream. Mask (camouflage) connections always go direct.
 >
-> **Dependency note:** the "zero dependencies" claim holds for the default `auto`/`direct` egress. With `socks5`, `http`, or `tunnel` upstream modes, MiddleProxy metadata refresh shells out to `curl`, so `curl` must be installed on the host (the standard installer pulls it in).
+> **Dependencies:** OpenSSL, nghttp2 and CA roots are bundled in the proxy. No separate TLS/HTTP2 runtime packages are needed. Metadata refresh uses `curl`, included by the installer and Docker image.
 
 ---
 
@@ -445,7 +446,7 @@ alice = true   # bypass MiddleProxy for this user
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `[upstream].type` | `auto` | Egress mode: `auto` (direct), `direct`, `tunnel` (VPN via socket policy routing), `socks5`, or `http` |
+| `[upstream].type` | `auto` | Egress mode: `auto` (direct), `direct`, `tunnel` (VPN via socket policy routing), `socks5`, `http`, or `telegram_ws` |
 | `[upstream] allow_direct_fallback` | `false` | If `true`, allows socks5/http modes to fall back to direct egress when upstream is unavailable |
 | `[upstream.tunnel] interface` | `"awg0"` | Legacy single tunnel interface / fallback for SO_MARK routing |
 | `[upstream.tunnel] interfaces` | `["awg0"]` | Ordered tunnel pool; first healthy interface wins |
@@ -705,7 +706,7 @@ The dashboard requires **HTTP Basic auth** (username: any; password auto-generat
 <summary>Demo: monitoring dashboard</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/assets/dashboard.gif" alt="Demo: monitoring dashboard" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/dashboard.gif" alt="Demo: monitoring dashboard" width="80%">
 </p>
 <br>
 
@@ -755,10 +756,10 @@ It exposes proxy counters plus process metrics such as RSS, virtual memory, CPU 
 
 ## Building locally
 
-Requires [Zig 0.16.0](https://ziglang.org/download/).
+Requires [Zig 0.16.0](https://ziglang.org/download/), Perl, Make and pkg-config. The first build downloads pinned TLS/HTTP2 and CA sources.
 
 ```bash
-git clone https://github.com/sleep3r/mtproto.zig.git
+git clone https://github.com/renvalis/mtproto.zig.git
 cd mtproto.zig
 
 make build      # cross-compile ReleaseFast binaries for Linux x86_64_v3+aes
@@ -788,17 +789,19 @@ scp zig-out/bin/mtproto-proxy root@<SERVER>:/opt/mtproto-proxy/
 
 ---
 
+[Telegram WSS, Cloudflare and HTTP/2 upstream](docs/telegram-ws.md) is included in every build and Docker image. Select `type = "telegram_ws"` in `config.toml`; no additional build flag is required. TLS, HTTP/2 and CA roots are bundled in the static binary.
+
 ## Docker
 
 Docker support is provided for testing, packaging experiments, and simple deployments where only the proxy binary is needed. The project is primarily designed for a native Linux host managed by `mtbuddy`: DPI modules, tunnel pool failover, policy routing, Nginx masking, nfqws, and recovery timers are host-level integrations and are not fully represented by the container.
 
 ```bash
-docker pull ghcr.io/sleep3r/mtproto.zig:latest
+docker pull ghcr.io/renvalis/mtproto.zig:latest
 
 docker run --rm \
   -p 443:443 \
   -v "$PWD/config.toml:/etc/mtproto-proxy/config.toml:ro" \
-  ghcr.io/sleep3r/mtproto.zig:latest
+  ghcr.io/renvalis/mtproto.zig:latest
 ```
 
 MiddleProxy media/promo traffic is sensitive to the outbound source IP:port used in its encrypted handshake. The egress IPv4 is **auto-detected through the configured upstream** — direct probes the host, `socks5`/`http` probes through the proxy (so it learns the SOCKS exit IP), and `tunnel` probes through the tunnel interface — so SOCKS/tunnel egress + ad-tag work without manual setup. For Docker deployments that need MiddleProxy, prefer host networking (`--network host`) or a native `mtbuddy` install. `[server].public_ip` is only the inbound address shown to clients; set `[server].middle_proxy_nat_ip` only to override when auto-detection can't see the real egress. Bridge or remote NAT that rewrites source ports can still break MiddleProxy handshakes.

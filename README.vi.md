@@ -6,7 +6,7 @@
 
 Một proxy Telegram nhỏ gọn mà bạn tự chạy trên máy chủ của riêng mình. Nó ẩn mình bên trong lưu lượng HTTPS thông thường, nên kiểm duyệt không thể tìm ra — và gia đình bạn cũng không thể mất nó. Một lệnh để cài đặt, một liên kết để chia sẻ.
 
-`177 KB · under 1 MB RAM · 0 dependencies` — đúng vậy, nó gọn nhẹ đến thế *(chi tiết bên dưới ↓)*
+`Một tệp thực thi · FakeTLS · WSS · Cloudflare · HTTP/2`
 
 <sub>Về mặt kỹ thuật: một MTProto proxy nhỏ gọn, không phụ thuộc, viết bằng Zig, ngụy trang lưu lượng Telegram thành HTTPS TLS 1.3 tiêu chuẩn.</sub>
 
@@ -48,7 +48,7 @@ Hầu hết các MTProto proxy đều cồng kềnh, lệ thuộc nhiều thư v
 
 | Proxy | Ngôn ngữ | Binary | RSS cơ bản | Khởi động | Phụ thuộc |
 |---|---|---:|---:|---|---|
-| **mtproto.zig** | Zig | **177 KB** | **0.75 MB** | **< 10 ms** | **0** |
+| **mtproto.zig** | Zig | Tích hợp TLS/H2 | — | — | Thư viện TLS/H2 tĩnh |
 | Official MTProxy | C | 524 KB | 8.0 MB | < 10 ms | openssl, zlib |
 | Telemt | Rust | 15 MB | 12.1 MB | ~ 5-6 s | 423 crates |
 | mtg | Go | 13 MB | 11.6 MB | ~ 30 ms | 78 mô-đun |
@@ -89,10 +89,10 @@ Mọi việc cài đặt, cập nhật và quản lý đều được thực hi�
 ### Một lệnh duy nhất
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
 
 # Explicitly allow unsigned bootstrap mode (not recommended)
-curl -fsSL https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
 # or: MTPROTO_INSECURE=1
 ```
 
@@ -132,7 +132,7 @@ sudo mtbuddy --interactive
 <summary>Demo: trình cài đặt tương tác</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/assets/buddy.gif" alt="Demo: trình cài đặt tương tác" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/buddy.gif" alt="Demo: trình cài đặt tương tác" width="80%">
 </p>
 <br>
 
@@ -564,7 +564,7 @@ Bảng điều khiển yêu cầu **HTTP Basic auth** (tên người dùng: bấ
 <summary>Demo: bảng điều khiển giám sát</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/assets/dashboard.gif" alt="Demo: bảng điều khiển giám sát" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/dashboard.gif" alt="Demo: bảng điều khiển giám sát" width="80%">
 </p>
 <br>
 
@@ -610,7 +610,7 @@ Nó cung cấp các bộ đếm của proxy cùng với các số liệu tiến 
 Yêu cầu [Zig 0.16.0](https://ziglang.org/download/).
 
 ```bash
-git clone https://github.com/sleep3r/mtproto.zig.git
+git clone https://github.com/renvalis/mtproto.zig.git
 cd mtproto.zig
 
 make build      # cross-compile ReleaseFast binaries for Linux x86_64_v3+aes
@@ -645,12 +645,12 @@ scp zig-out/bin/mtproto-proxy root@<SERVER>:/opt/mtproto-proxy/
 Hỗ trợ Docker được cung cấp cho việc kiểm thử, thử nghiệm đóng gói, và các triển khai đơn giản chỉ cần binary proxy. Dự án chủ yếu được thiết kế cho một host Linux gốc do `mtbuddy` quản lý: các mô-đun DPI, chuyển dự phòng nhóm đường hầm, định tuyến chính sách, che giấu Nginx, nfqws, và các bộ hẹn giờ phục hồi đều là các tích hợp ở cấp host và không được container thể hiện đầy đủ.
 
 ```bash
-docker pull ghcr.io/sleep3r/mtproto.zig:latest
+docker pull ghcr.io/renvalis/mtproto.zig:latest
 
 docker run --rm \
   -p 443:443 \
   -v "$PWD/config.toml:/etc/mtproto-proxy/config.toml:ro" \
-  ghcr.io/sleep3r/mtproto.zig:latest
+  ghcr.io/renvalis/mtproto.zig:latest
 ```
 
 Lưu lượng media/quảng bá MiddleProxy nhạy cảm với IP:port nguồn đi ra dùng trong bắt tay được mã hóa của nó. Với các triển khai Docker cần MiddleProxy, hãy ưu tiên dùng mạng host (`--network host`) hoặc một bản cài `mtbuddy` gốc. `[server].public_ip` chỉ là địa chỉ vào được hiển thị cho client; nếu lưu lượng DC đi ra thoát qua một IP VPN/NAT, hãy đặt `[server].middle_proxy_nat_ip` thành IPv4 đi ra đó. Bridge hoặc NAT từ xa ghi lại cổng nguồn vẫn có thể phá vỡ các bắt tay MiddleProxy.
@@ -745,3 +745,5 @@ Với `[upstream].type = "socks5"` hoặc `"http"`, việc làm mới metadata d
 ## Giấy phép
 
 [MIT](LICENSE) © 2026 Aleksandr Kalashnikov
+
+Telegram WSS, dự phòng Cloudflare và HTTP/2 cho media được tích hợp trong mọi bản dựng, không cần cờ riêng. Chọn `[upstream] type = "telegram_ws"`. Công cụ dựng: Zig 0.16.0, Perl, Make và pkg-config. [Tài liệu](docs/telegram-ws.md).

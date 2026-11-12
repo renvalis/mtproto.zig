@@ -616,7 +616,7 @@ fn execute(ui: *Tui, allocator: std.mem.Allocator, requested_opts: InstallOpts) 
     // ── Check root ──
     if (!sys.isRoot()) {
         ui.fail(ui.str(.error_not_root));
-        return;
+        return error.InstallationFailed;
     }
 
     // A repeated install preserves the deployed identity, including its early QR.
@@ -662,7 +662,7 @@ fn execute(ui: *Tui, allocator: std.mem.Allocator, requested_opts: InstallOpts) 
     if (opts.enable_masking and opts.port == masking_port) {
         ui.fail("Port conflict: proxy port and masking port are both " ++ masking.NGINX_PORT ++ ".");
         ui.info("Choose a different proxy port (e.g. 443) or disable masking (--no-masking).");
-        return;
+        return error.InstallationFailed;
     }
 
     const insecure_mode = opts.insecure or sys.envFlagSet("MTPROTO_INSECURE");
@@ -670,7 +670,7 @@ fn execute(ui: *Tui, allocator: std.mem.Allocator, requested_opts: InstallOpts) 
     if (!signature_available and !insecure_mode) {
         ui.fail("This mtbuddy build has no embedded minisign public key.");
         ui.info("Rebuild with -Dminisign_pubkey=<RW...> or use --insecure (or MTPROTO_INSECURE=1).");
-        return;
+        return error.InstallationFailed;
     }
     if (insecure_mode) {
         ui.warn("INSECURE mode enabled: release signature verification is disabled.");
@@ -704,12 +704,12 @@ fn execute(ui: *Tui, allocator: std.mem.Allocator, requested_opts: InstallOpts) 
             ));
             ui.info(localized(
                 ui,
-                "pacman (Arch) and dnf (RHEL/Fedora) support is tracked in https://github.com/sleep3r/mtproto.zig/issues/374",
-                "Поддержка pacman (Arch) и dnf (RHEL/Fedora) отслеживается в https://github.com/sleep3r/mtproto.zig/issues/374",
+                "pacman (Arch) and dnf (RHEL/Fedora) support is tracked in https://github.com/renvalis/mtproto.zig/issues/374",
+                "Поддержка pacman (Arch) и dnf (RHEL/Fedora) отслеживается в https://github.com/renvalis/mtproto.zig/issues/374",
             ));
-            return;
+            return error.InstallationFailed;
         }
-        if (!runRequiredWhileSpinning(ui, allocator, &.{ "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "-o", "DPkg::Lock::Timeout=600", "update", "-qq" }, "apt-get update failed", &sp)) return;
+        if (!runRequiredWhileSpinning(ui, allocator, &.{ "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "-o", "DPkg::Lock::Timeout=600", "update", "-qq" }, "apt-get update failed", &sp)) return error.InstallationFailed;
         // minisign is acquired separately (below), not in this required base install:
         // not every supported release ships it in apt (e.g. Ubuntu 20.04 focal), and
         // bundling it here would abort the whole install on those hosts.
@@ -722,7 +722,7 @@ fn execute(ui: *Tui, allocator: std.mem.Allocator, requested_opts: InstallOpts) 
             "openssl",                 "tar",
             "passwd",
         };
-        if (!runRequiredWhileSpinning(ui, allocator, base_packages, "Failed to install system dependencies", &sp)) return;
+        if (!runRequiredWhileSpinning(ui, allocator, base_packages, "Failed to install system dependencies", &sp)) return error.InstallationFailed;
         // qrencode powers the optional terminal/dashboard QR; the feature degrades
         // gracefully without it (printQrCode no-ops), so install it best-effort and
         // never fail the whole install if it's unavailable.
@@ -742,11 +742,11 @@ fn execute(ui: *Tui, allocator: std.mem.Allocator, requested_opts: InstallOpts) 
             sp.stop(false, "");
             ui.fail("minisign is required for release signature verification");
             if (minisign_fallback_failed) ui.info("apt has no minisign on this host and the pinned upstream fallback failed (check network / checksum), or re-run with --insecure.");
-            return;
+            return error.InstallationFailed;
         }
         if (!requiredAccountToolsAvailable(ui)) {
             sp.stop(false, "");
-            return;
+            return error.InstallationFailed;
         }
         sp.stop(true, "");
     }
@@ -759,7 +759,7 @@ fn execute(ui: *Tui, allocator: std.mem.Allocator, requested_opts: InstallOpts) 
         if (!release.resolveTag(allocator, opts.version, &tag)) {
             sp.stop(false, "");
             ui.fail(ui.str(.error_no_release));
-            return;
+            return error.InstallationFailed;
         }
         sp.stop(true, tag.slice());
     }
@@ -773,7 +773,7 @@ fn execute(ui: *Tui, allocator: std.mem.Allocator, requested_opts: InstallOpts) 
         if (!release.downloadProxyArtifact(allocator, tag.slice(), "install", !insecure_mode, &artifact)) {
             sp.stop(false, "");
             ui.fail(ui.str(.error_download_failed));
-            return;
+            return error.InstallationFailed;
         }
         sp.stop(true, artifact.asset_name);
     }
@@ -789,11 +789,11 @@ fn execute(ui: *Tui, allocator: std.mem.Allocator, requested_opts: InstallOpts) 
             artifact.binaryPath(), INSTALL_DIR ++ "/mtproto-proxy",
         }) catch {
             ui.fail("Failed to install the mtproto-proxy binary into " ++ INSTALL_DIR);
-            return;
+            return error.InstallationFailed;
         };
         if (install_rc != 0) {
             ui.fail("Installing the mtproto-proxy binary failed (disk full / read-only " ++ INSTALL_DIR ++ "?)");
-            return;
+            return error.InstallationFailed;
         }
         // Same guard `mtbuddy update` applies (update.zig): `setup tunnel` replaces this
         // unit with one carrying AmbientCapabilities=…CAP_NET_ADMIN and
@@ -822,13 +822,13 @@ fn execute(ui: *Tui, allocator: std.mem.Allocator, requested_opts: InstallOpts) 
             "install", "-m", "0640", cfg_path, INSTALL_DIR ++ "/config.toml",
         }) catch {
             ui.fail("Failed to copy --config file into the install dir");
-            return;
+            return error.InstallationFailed;
         };
         if (cfg_rc != 0) {
             // Do NOT fall through to generating a fresh config with a different
             // secret — that would silently discard the operator's intended users.
             ui.fail("Failed to copy --config file into the install dir");
-            return;
+            return error.InstallationFailed;
         }
     }
 
@@ -841,7 +841,7 @@ fn execute(ui: *Tui, allocator: std.mem.Allocator, requested_opts: InstallOpts) 
         } else {
             sys.generateSecret(&secret_hex) catch {
                 ui.fail(ui.str(.install_secret_gen_failed));
-                return;
+                return error.InstallationFailed;
             };
         }
 
@@ -901,22 +901,22 @@ fn execute(ui: *Tui, allocator: std.mem.Allocator, requested_opts: InstallOpts) 
     }
 
     // ── Create system user/group ──
-    if (!ensureServiceUser(ui, allocator)) return;
-    if (!runRequired(ui, allocator, &.{ "chown", "root:root", INSTALL_DIR }, "Failed to secure install directory")) return;
-    if (!runRequired(ui, allocator, &.{ "chown", "mtproto:mtproto", INSTALL_DIR ++ "/config.toml" }, "Failed to chown config")) return;
+    if (!ensureServiceUser(ui, allocator)) return error.InstallationFailed;
+    if (!runRequired(ui, allocator, &.{ "chown", "root:root", INSTALL_DIR }, "Failed to secure install directory")) return error.InstallationFailed;
+    if (!runRequired(ui, allocator, &.{ "chown", "mtproto:mtproto", INSTALL_DIR ++ "/config.toml" }, "Failed to chown config")) return error.InstallationFailed;
 
     // ── Systemd service ──
     {
         var sp = ui.spinner(ui.str(.install_service_installed));
         sp.start();
-        if (!runRequiredWhileSpinning(ui, allocator, &.{ "systemctl", "daemon-reload" }, "systemctl daemon-reload failed", &sp)) return;
-        if (!runRequiredWhileSpinning(ui, allocator, &.{ "systemctl", "enable", SERVICE_NAME }, "Failed to enable mtproto-proxy service", &sp)) return;
-        if (!runRequiredWhileSpinning(ui, allocator, &.{ "systemctl", "restart", SERVICE_NAME }, "Failed to start mtproto-proxy service", &sp)) return;
+        if (!runRequiredWhileSpinning(ui, allocator, &.{ "systemctl", "daemon-reload" }, "systemctl daemon-reload failed", &sp)) return error.InstallationFailed;
+        if (!runRequiredWhileSpinning(ui, allocator, &.{ "systemctl", "enable", SERVICE_NAME }, "Failed to enable mtproto-proxy service", &sp)) return error.InstallationFailed;
+        if (!runRequiredWhileSpinning(ui, allocator, &.{ "systemctl", "restart", SERVICE_NAME }, "Failed to start mtproto-proxy service", &sp)) return error.InstallationFailed;
         if (!sys.isServiceActive(SERVICE_NAME)) {
             sp.stop(false, "");
             ui.fail("mtproto-proxy service is not active after restart");
             printServiceStatus(ui, allocator);
-            return;
+            return error.InstallationFailed;
         }
         sp.stop(true, "");
     }
@@ -1039,12 +1039,12 @@ fn execute(ui: *Tui, allocator: std.mem.Allocator, requested_opts: InstallOpts) 
     }
 
     // ── Final restart ──
-    if (!runRequired(ui, allocator, &.{ "chown", "root:root", INSTALL_DIR }, "Failed to secure install directory")) return;
-    if (!runRequired(ui, allocator, &.{ "systemctl", "restart", SERVICE_NAME }, "Failed to restart mtproto-proxy after setup")) return;
+    if (!runRequired(ui, allocator, &.{ "chown", "root:root", INSTALL_DIR }, "Failed to secure install directory")) return error.InstallationFailed;
+    if (!runRequired(ui, allocator, &.{ "systemctl", "restart", SERVICE_NAME }, "Failed to restart mtproto-proxy after setup")) return error.InstallationFailed;
     if (!sys.isServiceActive(SERVICE_NAME)) {
         ui.fail("mtproto-proxy service is not active after setup");
         printServiceStatus(ui, allocator);
-        return;
+        return error.InstallationFailed;
     }
 
     ui.rule();
@@ -1751,7 +1751,7 @@ pub fn renderTcpmssScript(buf: []u8, p: TcpmssScriptParams) ![]const u8 {
 fn tcpmssUnitContent() []const u8 {
     return "[Unit]\n" ++
         "Description=MTProto proxy TCPMSS clamp (ClientHello fragmentation)\n" ++
-        "Documentation=https://github.com/sleep3r/mtproto.zig\n" ++
+        "Documentation=https://github.com/renvalis/mtproto.zig\n" ++
         "After=network.target\n" ++
         "Before=mtproto-proxy.service\n" ++
         "\n" ++

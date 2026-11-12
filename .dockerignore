@@ -10,3 +10,5 @@ zig-out
 GEMINI.md
 Makefile
 test_*.zig
+config.toml
+.release-keys

@@ -1,4 +1,5 @@
 .zig-cache/
+zig-pkg/
 zig-out/
 *.o
 telemt/
@@ -28,6 +29,7 @@ codebase.txt
 # Local Markdown documents, plans and audits are not release inputs.
 # Existing published README/CHANGELOG files remain tracked.
 *.md
+!docs/telegram-ws.md
 AUDIT-*.md
 ROADMAP_1.0.md
 PRODUCT_VISION.md
@@ -35,3 +37,6 @@ PRODUCT_VISION.md
 # Dashboard authentication token generated at runtime.
 src/ctl/dashboard_assets/dashboard.token
 src/ctl/dashboard_assets/traffic.sqlite3*
+
+# Local release signing keys; never commit private key material.
+/.release-keys/

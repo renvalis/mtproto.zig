@@ -6,7 +6,7 @@
 
 一个运行在你自己服务器上的小巧 Telegram 代理。它隐藏在普通的 HTTPS 流量之中，让审查无从发现 —— 你的家人也不会再失去它。一条命令即可部署，一个链接即可分享。
 
-`177 KB · under 1 MB RAM · 0 dependencies` —— 没错，它就是这么精简 *(详见下文 ↓)*
+`单一可执行文件 · FakeTLS · WSS · Cloudflare · HTTP/2`
 
 <sub>技术上讲：一个用 Zig 编写、零依赖的小巧 MTProto 代理，能将 Telegram 流量伪装成标准的 TLS 1.3 HTTPS。</sub>
 
@@ -48,7 +48,7 @@ VPN 会暴露自己 —— 审查者能识别其协议并加以封锁，而全�
 
 | 代理 | 语言 | 二进制大小 | 基准 RSS | 启动时间 | 依赖 |
 |---|---|---:|---:|---|---|
-| **mtproto.zig** | Zig | **177 KB** | **0.75 MB** | **< 10 ms** | **0** |
+| **mtproto.zig** | Zig | 内置 TLS/H2 | — | — | 静态 TLS/H2 库 |
 | 官方 MTProxy | C | 524 KB | 8.0 MB | < 10 ms | openssl, zlib |
 | Telemt | Rust | 15 MB | 12.1 MB | ~ 5-6 s | 423 个 crate |
 | mtg | Go | 13 MB | 11.6 MB | ~ 30 ms | 78 个模块 |
@@ -89,10 +89,10 @@ VPN 会暴露自己 —— 审查者能识别其协议并加以封锁，而全�
 ### 一条命令
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
 
 # Explicitly allow unsigned bootstrap mode (not recommended)
-curl -fsSL https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
 # or: MTPROTO_INSECURE=1
 ```
 
@@ -132,7 +132,7 @@ sudo mtbuddy --interactive
 <summary>演示：交互式安装程序</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/assets/buddy.gif" alt="演示：交互式安装程序" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/buddy.gif" alt="演示：交互式安装程序" width="80%">
 </p>
 <br>
 
@@ -559,7 +559,7 @@ ssh -L 61208:localhost:61208 root@<server_ip>
 <summary>演示：监控面板</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sleep3r/mtproto.zig/main/assets/dashboard.gif" alt="演示：监控面板" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/dashboard.gif" alt="演示：监控面板" width="80%">
 </p>
 <br>
 
@@ -605,7 +605,7 @@ docker run --rm \
 需要 [Zig 0.16.0](https://ziglang.org/download/)。
 
 ```bash
-git clone https://github.com/sleep3r/mtproto.zig.git
+git clone https://github.com/renvalis/mtproto.zig.git
 cd mtproto.zig
 
 make build      # cross-compile ReleaseFast binaries for Linux x86_64_v3+aes
@@ -640,12 +640,12 @@ scp zig-out/bin/mtproto-proxy root@<SERVER>:/opt/mtproto-proxy/
 提供 Docker 支持是为了测试、打包实验，以及只需要代理二进制文件的简单部署。本项目主要面向由 `mtbuddy` 管理的原生 Linux 主机：DPI 模块、隧道池故障切换、策略路由、Nginx 伪装、nfqws 以及恢复定时器都是主机级别的集成，容器无法完整体现这些功能。
 
 ```bash
-docker pull ghcr.io/sleep3r/mtproto.zig:latest
+docker pull ghcr.io/renvalis/mtproto.zig:latest
 
 docker run --rm \
   -p 443:443 \
   -v "$PWD/config.toml:/etc/mtproto-proxy/config.toml:ro" \
-  ghcr.io/sleep3r/mtproto.zig:latest
+  ghcr.io/renvalis/mtproto.zig:latest
 ```
 
 MiddleProxy 的媒体/推广流量对其加密握手中使用的出站源 IP:port 很敏感。对于需要 MiddleProxy 的 Docker 部署，建议使用主机网络（`--network host`）或原生的 `mtbuddy` 安装。`[server].public_ip` 只是显示给客户端的入站地址；如果出站 DC 流量经由 VPN/NAT IP 出去，请将 `[server].middle_proxy_nat_ip` 设置为该出站 IPv4。会重写源端口的桥接或远程 NAT 仍可能破坏 MiddleProxy 握手。
@@ -740,3 +740,5 @@ Docker 的网桥会丢弃来自 VPN 子网的数据包。
 ## 许可证
 
 [MIT](LICENSE) © 2026 Aleksandr Kalashnikov
+
+Telegram WSS、Cloudflare 回退和 HTTP/2 媒体路由已包含在每次构建中，无需构建开关。通过 `[upstream] type = "telegram_ws"` 配置。构建工具：Zig 0.16.0、Perl、Make 和 pkg-config。[传输文档](docs/telegram-ws.md)。

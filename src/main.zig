@@ -215,13 +215,17 @@ fn estimateCapacity(cfg: *const config.Config, total_ram_bytes: u64) CapacityEst
     // - optional middle-proxy stream buffers (2 per-connection buffers)
     // - allocator/socket bookkeeping cushion
     const tls_working_bytes: u64 = @intCast(6 * 1024);
-    const middleproxy_per_conn_bytes: u64 = if (cfg.use_middle_proxy or cfg.force_media_middle_proxy or cfg.tag != null)
+    const middleproxy_per_conn_bytes: u64 = if (cfg.upstream_mode == .telegram_ws)
+        48 * 1024 * 1024 // bounded WS queues, packet buffers and TLS allocator headroom
+    else if (cfg.use_middle_proxy or cfg.force_media_middle_proxy or cfg.tag != null)
         @intCast(cfg.middleProxyBufferBytes() * 2)
     else
         0;
     // Event loop also keeps 2 shared scratch buffers for middle-proxy
     // encapsulate/decapsulate temporary output.
-    const middleproxy_shared_bytes: u64 = if (cfg.use_middle_proxy or cfg.force_media_middle_proxy or cfg.tag != null)
+    const middleproxy_shared_bytes: u64 = if (cfg.upstream_mode == .telegram_ws)
+        @as(u64, cfg.telegram_ws.pool_size) * 12 * 512 * 1024 * std.math.clamp(if (cfg.workers == 0) std.Thread.getCpuCount() catch 1 else cfg.workers, 1, 256)
+    else if (cfg.use_middle_proxy or cfg.force_media_middle_proxy or cfg.tag != null)
         @intCast(cfg.middleProxySharedBytes())
     else
         0;
@@ -235,7 +239,7 @@ fn estimateCapacity(cfg: *const config.Config, total_ram_bytes: u64) CapacityEst
     const budget_bytes = if (usable_bytes > fixed_overhead_bytes) usable_bytes - fixed_overhead_bytes else 0;
 
     const raw_cap = if (per_conn_bytes > 0) budget_bytes / per_conn_bytes else 0;
-    const safe_connections_u64 = @max(@as(u64, 32), @min(raw_cap, @as(u64, std.math.maxInt(u32))));
+    const safe_connections_u64 = @max(@as(u64, if (cfg.upstream_mode == .telegram_ws) 1 else 32), @min(raw_cap, @as(u64, std.math.maxInt(u32))));
 
     return .{
         .total_ram_bytes = total_ram_bytes,
@@ -596,4 +600,19 @@ test "capacity safety clamp keeps configured limit when override enabled" {
 
     try enforceCapacitySafety(&cfg, est);
     try std.testing.expectEqual(@as(u32, 4096), cfg.max_connections);
+}
+
+test "WS capacity reserves packet queues and does not keep the direct minimum of 32" {
+    var cfg = config.Config{
+        .users = std.StringHashMap([16]u8).init(std.testing.allocator),
+        .direct_users = std.StringHashMap(void).init(std.testing.allocator),
+    };
+    defer cfg.deinit(std.testing.allocator);
+    cfg.upstream_mode = .telegram_ws;
+    cfg.telegram_ws.pool_size = 0;
+    const est = estimateCapacity(&cfg, 512 * 1024 * 1024);
+    try std.testing.expect(est.per_conn_bytes >= 48 * 1024 * 1024);
+    try std.testing.expect(est.safe_connections < 32);
+    cfg.force_media_middle_proxy = false;
+    try std.testing.expectEqual(est.per_conn_bytes, estimateCapacity(&cfg, 512 * 1024 * 1024).per_conn_bytes);
 }
