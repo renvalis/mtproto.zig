@@ -124,7 +124,7 @@ jobs:
 
       - name: Build release binary
         run: |
-          PINNED_MINISIGN_PUBKEY="RWT8YwmUuq/3WpUnYJjD6rAfQugYdZKWr61U3O+2kdNvriLSyrvVU/NO"
+          PINNED_MINISIGN_PUBKEY="RWRC+9K03Y5xlzE/deJ1BKvK0xCaaTiLCvz/8gRlsWCk0fdkkq7WvHmz"
           BUILD_ARGS="-Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}"
           if [ -n "${{ matrix.cpu }}" ]; then
             BUILD_ARGS="$BUILD_ARGS -Dcpu=${{ matrix.cpu }}"
@@ -147,7 +147,7 @@ jobs:
         env:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
         run: |
-          PINNED_MINISIGN_PUBKEY="RWT8YwmUuq/3WpUnYJjD6rAfQugYdZKWr61U3O+2kdNvriLSyrvVU/NO"
+          PINNED_MINISIGN_PUBKEY="RWRC+9K03Y5xlzE/deJ1BKvK0xCaaTiLCvz/8gRlsWCk0fdkkq7WvHmz"
           if [ -z "${MINISIGN_SECRET_KEY}" ]; then
             echo "MINISIGN_SECRET_KEY is required for release signing"
             exit 1
@@ -202,7 +202,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PINNED_MINISIGN_PUBKEY="RWT8YwmUuq/3WpUnYJjD6rAfQugYdZKWr61U3O+2kdNvriLSyrvVU/NO"
+          PINNED_MINISIGN_PUBKEY="RWRC+9K03Y5xlzE/deJ1BKvK0xCaaTiLCvz/8gRlsWCk0fdkkq7WvHmz"
           printf '%s\n' "untrusted comment: mtproto.zig minisign public key" > minisign.pub
           printf '%s\n' "${PINNED_MINISIGN_PUBKEY}" >> minisign.pub
           gh release upload "${{ needs.release-please.outputs.tag_name }}" \

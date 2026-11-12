@@ -18,7 +18,7 @@ pub fn build(b: *std.Build) void {
     ) orelse true;
     const dataplane_optimize: std.builtin.OptimizeMode =
         if (dataplane_safety and (optimize == .ReleaseFast or optimize == .ReleaseSmall)) .ReleaseSafe else optimize;
-    const pinned_minisign_pubkey = "RWT8YwmUuq/3WpUnYJjD6rAfQugYdZKWr61U3O+2kdNvriLSyrvVU/NO";
+    const pinned_minisign_pubkey = "RWRC+9K03Y5xlzE/deJ1BKvK0xCaaTiLCvz/8gRlsWCk0fdkkq7WvHmz";
     const minisign_pubkey = b.option(
         []const u8,
         "minisign_pubkey",
