@@ -26,11 +26,17 @@ pub fn dependencies(b: *std.Build, target: std.Build.ResolvedTarget) ?Dependenci
     if (openssl == null or certifi == null or nghttp2 == null) return null;
     const jobs = b.option(u16, "ws_tls_jobs", "Parallel C compiler jobs for bundled TLS (default: 4)") orelse 4;
     if (jobs == 0) @panic("ws_tls_jobs must be positive");
+    // External build systems need a concrete arch/OS/ABI, even for native builds.
+    var target_query = target.query;
+    target_query.cpu_arch = target.result.cpu.arch;
+    target_query.os_tag = target.result.os.tag;
+    target_query.abi = target.result.abi;
+    const target_triple = target_query.zigTriple(b.allocator) catch @panic("OOM");
     const build = b.addSystemCommand(&.{"sh"});
     build.addFileArg(b.path("src/extensions/ws_transport/build_openssl.sh"));
     build.addArg(b.graph.zig_exe);
     build.addDirectoryArg(openssl.?.path(""));
-    build.addArg(target.query.zigTriple(b.allocator) catch @panic("OOM"));
+    build.addArg(target_triple);
     build.addArg(b.fmt("{d}", .{jobs}));
     const archives = build.addOutputDirectoryArg("openssl");
     build.step.name = "build bundled OpenSSL";
@@ -41,7 +47,7 @@ pub fn dependencies(b: *std.Build, target: std.Build.ResolvedTarget) ?Dependenci
     h2.addFileArg(b.path("src/extensions/ws_transport/build_nghttp2.sh"));
     h2.addArg(b.graph.zig_exe);
     h2.addDirectoryArg(nghttp2.?.path(""));
-    h2.addArg(target.query.zigTriple(b.allocator) catch @panic("OOM"));
+    h2.addArg(target_triple);
     h2.addArg(b.fmt("{d}", .{jobs}));
     h2.addFileArg(b.path("src/extensions/ws_transport/cf_h2.c"));
     const h2_output = h2.addOutputDirectoryArg("nghttp2");
