@@ -89,10 +89,10 @@ MiddleProxy нужен для промо-тега и медиа на аккау�
 ### Одна команда
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alex98247/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
 
 # Явно разрешить unsigned bootstrap mode (не рекомендуется)
-curl -fsSL https://raw.githubusercontent.com/alex98247/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
 # или: MTPROTO_INSECURE=1
 ```
 
@@ -127,7 +127,7 @@ sudo mtbuddy --interactive
 <summary>Демо: интерактивная установка</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/alex98247/mtproto.zig/main/assets/buddy.gif" alt="Demo: interactive installer" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/buddy.gif" alt="Demo: interactive installer" width="80%">
 </p>
 <br>
 
@@ -630,7 +630,7 @@ Dashboard требует **HTTP Basic auth** (имя пользователя: �
 <summary>Демо: dashboard</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/alex98247/mtproto.zig/main/assets/dashboard.gif" alt="Demo: monitoring dashboard" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/dashboard.gif" alt="Demo: monitoring dashboard" width="80%">
 </p>
 <br>
 
@@ -681,7 +681,7 @@ docker run --rm \
 Нужны [Zig 0.16.0](https://ziglang.org/download/), Perl, Make и pkg-config. Первая сборка скачивает закреплённые исходники TLS/HTTP2 и CA-набор.
 
 ```bash
-git clone https://github.com/alex98247/mtproto.zig.git
+git clone https://github.com/renvalis/mtproto.zig.git
 cd mtproto.zig
 
 make build
@@ -710,12 +710,12 @@ scp zig-out/bin/mtproto-proxy root@<SERVER>:/opt/mtproto-proxy/
 Docker поддерживается для тестов, упаковочных экспериментов и простых сценариев, где нужен только бинарник прокси. Основной production-путь проекта — нативный Linux host под управлением `mtbuddy`: DPI-модули, tunnel pool failover, policy routing, Nginx masking, nfqws и recovery timers являются host-level интеграциями и не представлены контейнером полностью.
 
 ```bash
-docker pull ghcr.io/alex98247/mtproto.zig:latest
+docker pull ghcr.io/renvalis/mtproto.zig:latest
 
 docker run --rm \
   -p 443:443 \
   -v "$PWD/config.toml:/etc/mtproto-proxy/config.toml:ro" \
-  ghcr.io/alex98247/mtproto.zig:latest
+  ghcr.io/renvalis/mtproto.zig:latest
 ```
 
 MiddleProxy для медиа/промо чувствителен к исходному source IP:port, который попадает в encrypted handshake. Исходящий IPv4 **авто-детектится через настроенный upstream** — direct зондирует хост, `socks5`/`http` зондирует через прокси (узнаёт exit-IP SOCKS), `tunnel` — через интерфейс туннеля, — поэтому SOCKS/туннель + ad-tag работают без ручной настройки. Для Docker-деплоя с MiddleProxy лучше использовать host networking (`--network host`) или нативный `mtbuddy install`. `[server].public_ip` — только входящий адрес для клиентов; задавайте `[server].middle_proxy_nat_ip` лишь для переопределения, если авто-детект не видит реальный egress. Bridge или удаленный NAT, переписывающий source port, всё равно может ломать MiddleProxy handshake.

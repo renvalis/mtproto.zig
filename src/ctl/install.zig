@@ -704,8 +704,8 @@ fn execute(ui: *Tui, allocator: std.mem.Allocator, requested_opts: InstallOpts) 
             ));
             ui.info(localized(
                 ui,
-                "pacman (Arch) and dnf (RHEL/Fedora) support is tracked in https://github.com/alex98247/mtproto.zig/issues/374",
-                "Поддержка pacman (Arch) и dnf (RHEL/Fedora) отслеживается в https://github.com/alex98247/mtproto.zig/issues/374",
+                "pacman (Arch) and dnf (RHEL/Fedora) support is tracked in https://github.com/renvalis/mtproto.zig/issues/374",
+                "Поддержка pacman (Arch) и dnf (RHEL/Fedora) отслеживается в https://github.com/renvalis/mtproto.zig/issues/374",
             ));
             return;
         }
@@ -1751,7 +1751,7 @@ pub fn renderTcpmssScript(buf: []u8, p: TcpmssScriptParams) ![]const u8 {
 fn tcpmssUnitContent() []const u8 {
     return "[Unit]\n" ++
         "Description=MTProto proxy TCPMSS clamp (ClientHello fragmentation)\n" ++
-        "Documentation=https://github.com/alex98247/mtproto.zig\n" ++
+        "Documentation=https://github.com/renvalis/mtproto.zig\n" ++
         "After=network.target\n" ++
         "Before=mtproto-proxy.service\n" ++
         "\n" ++

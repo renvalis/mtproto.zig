@@ -17,7 +17,7 @@ If you run an older release, upgrade first and re-test before reporting.
 Please do not open public issues for security problems.
 
 Use GitHub private vulnerability reporting:
-- https://github.com/alex98247/mtproto.zig/security/advisories/new
+- https://github.com/renvalis/mtproto.zig/security/advisories/new
 
 Include:
 - affected version (`mtproto-proxy --version`)
@@ -49,11 +49,11 @@ The public key is pinned in `build.zig`, `deploy/bootstrap.sh`, and
 `.github/workflows/release-please.yml`. Update all three together when rotating it.
 
 To enable signed releases, create the GitHub Environment `release` in
-`alex98247/mtproto.zig` and add its environment secret `MINISIGN_SECRET_KEY` with
+`renvalis/mtproto.zig` and add its environment secret `MINISIGN_SECRET_KEY` with
 the entire contents of the private file. With authenticated GitHub CLI:
 
 ```sh
-gh secret set MINISIGN_SECRET_KEY --repo alex98247/mtproto.zig --env release < .release-keys/minisign.key
+gh secret set MINISIGN_SECRET_KEY --repo renvalis/mtproto.zig --env release < .release-keys/minisign.key
 ```
 
 The file is passed directly to GitHub CLI without printing its contents.

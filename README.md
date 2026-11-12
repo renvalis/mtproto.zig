@@ -89,10 +89,10 @@ All installation, updates, and management are done through **mtbuddy** — a nat
 ### One command
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alex98247/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
 
 # Explicitly allow unsigned bootstrap mode (not recommended)
-curl -fsSL https://raw.githubusercontent.com/alex98247/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
 # or: MTPROTO_INSECURE=1
 ```
 
@@ -132,7 +132,7 @@ sudo mtbuddy --interactive
 <summary>Demo: interactive installer</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/alex98247/mtproto.zig/main/assets/buddy.gif" alt="Demo: interactive installer" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/buddy.gif" alt="Demo: interactive installer" width="80%">
 </p>
 <br>
 
@@ -706,7 +706,7 @@ The dashboard requires **HTTP Basic auth** (username: any; password auto-generat
 <summary>Demo: monitoring dashboard</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/alex98247/mtproto.zig/main/assets/dashboard.gif" alt="Demo: monitoring dashboard" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/dashboard.gif" alt="Demo: monitoring dashboard" width="80%">
 </p>
 <br>
 
@@ -759,7 +759,7 @@ It exposes proxy counters plus process metrics such as RSS, virtual memory, CPU 
 Requires [Zig 0.16.0](https://ziglang.org/download/), Perl, Make and pkg-config. The first build downloads pinned TLS/HTTP2 and CA sources.
 
 ```bash
-git clone https://github.com/alex98247/mtproto.zig.git
+git clone https://github.com/renvalis/mtproto.zig.git
 cd mtproto.zig
 
 make build      # cross-compile ReleaseFast binaries for Linux x86_64_v3+aes
@@ -796,12 +796,12 @@ scp zig-out/bin/mtproto-proxy root@<SERVER>:/opt/mtproto-proxy/
 Docker support is provided for testing, packaging experiments, and simple deployments where only the proxy binary is needed. The project is primarily designed for a native Linux host managed by `mtbuddy`: DPI modules, tunnel pool failover, policy routing, Nginx masking, nfqws, and recovery timers are host-level integrations and are not fully represented by the container.
 
 ```bash
-docker pull ghcr.io/alex98247/mtproto.zig:latest
+docker pull ghcr.io/renvalis/mtproto.zig:latest
 
 docker run --rm \
   -p 443:443 \
   -v "$PWD/config.toml:/etc/mtproto-proxy/config.toml:ro" \
-  ghcr.io/alex98247/mtproto.zig:latest
+  ghcr.io/renvalis/mtproto.zig:latest
 ```
 
 MiddleProxy media/promo traffic is sensitive to the outbound source IP:port used in its encrypted handshake. The egress IPv4 is **auto-detected through the configured upstream** — direct probes the host, `socks5`/`http` probes through the proxy (so it learns the SOCKS exit IP), and `tunnel` probes through the tunnel interface — so SOCKS/tunnel egress + ad-tag work without manual setup. For Docker deployments that need MiddleProxy, prefer host networking (`--network host`) or a native `mtbuddy` install. `[server].public_ip` is only the inbound address shown to clients; set `[server].middle_proxy_nat_ip` only to override when auto-detection can't see the real egress. Bridge or remote NAT that rewrites source ports can still break MiddleProxy handshakes.

@@ -89,10 +89,10 @@ Mọi việc cài đặt, cập nhật và quản lý đều được thực hi�
 ### Một lệnh duy nhất
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alex98247/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
 
 # Explicitly allow unsigned bootstrap mode (not recommended)
-curl -fsSL https://raw.githubusercontent.com/alex98247/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
 # or: MTPROTO_INSECURE=1
 ```
 
@@ -132,7 +132,7 @@ sudo mtbuddy --interactive
 <summary>Demo: trình cài đặt tương tác</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/alex98247/mtproto.zig/main/assets/buddy.gif" alt="Demo: trình cài đặt tương tác" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/buddy.gif" alt="Demo: trình cài đặt tương tác" width="80%">
 </p>
 <br>
 
@@ -564,7 +564,7 @@ Bảng điều khiển yêu cầu **HTTP Basic auth** (tên người dùng: bấ
 <summary>Demo: bảng điều khiển giám sát</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/alex98247/mtproto.zig/main/assets/dashboard.gif" alt="Demo: bảng điều khiển giám sát" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/dashboard.gif" alt="Demo: bảng điều khiển giám sát" width="80%">
 </p>
 <br>
 
@@ -610,7 +610,7 @@ Nó cung cấp các bộ đếm của proxy cùng với các số liệu tiến 
 Yêu cầu [Zig 0.16.0](https://ziglang.org/download/).
 
 ```bash
-git clone https://github.com/alex98247/mtproto.zig.git
+git clone https://github.com/renvalis/mtproto.zig.git
 cd mtproto.zig
 
 make build      # cross-compile ReleaseFast binaries for Linux x86_64_v3+aes
@@ -645,12 +645,12 @@ scp zig-out/bin/mtproto-proxy root@<SERVER>:/opt/mtproto-proxy/
 Hỗ trợ Docker được cung cấp cho việc kiểm thử, thử nghiệm đóng gói, và các triển khai đơn giản chỉ cần binary proxy. Dự án chủ yếu được thiết kế cho một host Linux gốc do `mtbuddy` quản lý: các mô-đun DPI, chuyển dự phòng nhóm đường hầm, định tuyến chính sách, che giấu Nginx, nfqws, và các bộ hẹn giờ phục hồi đều là các tích hợp ở cấp host và không được container thể hiện đầy đủ.
 
 ```bash
-docker pull ghcr.io/alex98247/mtproto.zig:latest
+docker pull ghcr.io/renvalis/mtproto.zig:latest
 
 docker run --rm \
   -p 443:443 \
   -v "$PWD/config.toml:/etc/mtproto-proxy/config.toml:ro" \
-  ghcr.io/alex98247/mtproto.zig:latest
+  ghcr.io/renvalis/mtproto.zig:latest
 ```
 
 Lưu lượng media/quảng bá MiddleProxy nhạy cảm với IP:port nguồn đi ra dùng trong bắt tay được mã hóa của nó. Với các triển khai Docker cần MiddleProxy, hãy ưu tiên dùng mạng host (`--network host`) hoặc một bản cài `mtbuddy` gốc. `[server].public_ip` chỉ là địa chỉ vào được hiển thị cho client; nếu lưu lượng DC đi ra thoát qua một IP VPN/NAT, hãy đặt `[server].middle_proxy_nat_ip` thành IPv4 đi ra đó. Bridge hoặc NAT từ xa ghi lại cổng nguồn vẫn có thể phá vỡ các bắt tay MiddleProxy.

@@ -2,7 +2,7 @@
 # bootstrap.sh — download and run mtbuddy, the mtproto.zig installer
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/alex98247/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
 #   curl -fsSL .../bootstrap.sh | sudo bash -s -- install --port 443 --domain rutube.ru --yes
 #   curl -fsSL .../bootstrap.sh | sudo bash -s -- --interactive
 #
@@ -12,7 +12,7 @@ set -euo pipefail
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
 export PATH
 
-REPO="alex98247/mtproto.zig"
+REPO="renvalis/mtproto.zig"
 INSTALL_TO="/usr/local/bin/mtbuddy"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT

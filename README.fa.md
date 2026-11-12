@@ -89,10 +89,10 @@ MiddleProxy برای برچسب‌های تبلیغاتی (promotion tags) و ب
 ### یک دستور
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alex98247/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
 
 # Explicitly allow unsigned bootstrap mode (not recommended)
-curl -fsSL https://raw.githubusercontent.com/alex98247/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash -s -- --insecure
 # or: MTPROTO_INSECURE=1
 ```
 
@@ -132,7 +132,7 @@ sudo mtbuddy --interactive
 <summary>نمایش: نصب‌کننده‌ی تعاملی</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/alex98247/mtproto.zig/main/assets/buddy.gif" alt="نمایش: نصب‌کننده‌ی تعاملی" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/buddy.gif" alt="نمایش: نصب‌کننده‌ی تعاملی" width="80%">
 </p>
 <br>
 
@@ -563,7 +563,7 @@ ssh -L 61208:localhost:61208 root@<server_ip>
 <summary>نمایش: داشبورد نظارت</summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/alex98247/mtproto.zig/main/assets/dashboard.gif" alt="نمایش: داشبورد نظارت" width="80%">
+  <img src="https://raw.githubusercontent.com/renvalis/mtproto.zig/main/assets/dashboard.gif" alt="نمایش: داشبورد نظارت" width="80%">
 </p>
 <br>
 
@@ -609,7 +609,7 @@ docker run --rm \
 نیازمند [Zig 0.16.0](https://ziglang.org/download/) است.
 
 ```bash
-git clone https://github.com/alex98247/mtproto.zig.git
+git clone https://github.com/renvalis/mtproto.zig.git
 cd mtproto.zig
 
 make build      # cross-compile ReleaseFast binaries for Linux x86_64_v3+aes
@@ -644,12 +644,12 @@ scp zig-out/bin/mtproto-proxy root@<SERVER>:/opt/mtproto-proxy/
 پشتیبانی از Docker برای آزمایش، آزمون‌های بسته‌بندی و استقرارهای ساده‌ای که فقط فایل اجرایی پراکسی لازم است فراهم شده. این پروژه در درجه‌ی اول برای یک هاست بومیِ Linux که توسط `mtbuddy` مدیریت می‌شود طراحی شده است: ماژول‌های DPI، failover استخر تونل، مسیریابیِ مبتنی بر سیاست، استتار Nginx، nfqws و تایمرهای بازیابی، یکپارچه‌سازی‌های سطح-هاست هستند و به‌طور کامل توسط کانتینر نمایندگی نمی‌شوند.
 
 ```bash
-docker pull ghcr.io/alex98247/mtproto.zig:latest
+docker pull ghcr.io/renvalis/mtproto.zig:latest
 
 docker run --rm \
   -p 443:443 \
   -v "$PWD/config.toml:/etc/mtproto-proxy/config.toml:ro" \
-  ghcr.io/alex98247/mtproto.zig:latest
+  ghcr.io/renvalis/mtproto.zig:latest
 ```
 
 ترافیک رسانه/تبلیغِ MiddleProxy به IP:port مبدأِ خروجی که در هندشیک رمزنگاری‌شده‌اش استفاده می‌شود حساس است. برای استقرارهای Docker که به MiddleProxy نیاز دارند، شبکه‌ی هاست (`--network host`) یا نصب بومیِ `mtbuddy` را ترجیح دهید. `[server].public_ip` فقط آدرس ورودی است که به کلاینت‌ها نمایش داده می‌شود؛ اگر ترافیک خروجیِ DC از طریق یک IP مربوط به VPN/NAT خارج می‌شود، `[server].middle_proxy_nat_ip` را روی آن IPv4 خروجی تنظیم کنید. Bridge یا NAT راه دور که پورت‌های مبدأ را بازنویسی می‌کند، همچنان می‌تواند هندشیک‌های MiddleProxy را بشکند.

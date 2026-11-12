@@ -47,7 +47,7 @@ body:
       label: Pre-flight checklist
       description: "You **must** confirm every item. If an item does not apply, explain why in the description."
       options:
-        - label: "I am running the **latest release** (checked [Releases](https://github.com/alex98247/mtproto.zig/releases))."
+        - label: "I am running the **latest release** (checked [Releases](https://github.com/renvalis/mtproto.zig/releases))."
           required: true
         - label: "System clock is synchronized (`timedatectl status` shows `NTP synchronized: yes`)."
           required: true

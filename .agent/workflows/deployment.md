@@ -45,7 +45,7 @@ make deploy SERVER=proxy.example.com
 Directly on host:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alex98247/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/renvalis/mtproto.zig/main/deploy/bootstrap.sh | sudo bash
 ```
 
 Or if mtbuddy is already installed:
