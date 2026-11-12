@@ -51,7 +51,7 @@ pub const TunnelOpts = struct {
 };
 
 const AwgRepositorySetup = enum {
-    ubuntu_add_apt_repository,
+    ubuntu_launchpad_source,
     debian_launchpad_focal_source,
     /// Not a Debian-family host. amneziawg-tools ships only in the Amnezia Launchpad
     /// PPA (apt), is AUR-only on Arch — where pacman cannot install it and makepkg
@@ -64,8 +64,6 @@ const ubuntu_awg_repo_prereqs = [_][]const u8{
     "ca-certificates",
     "curl",
     "gnupg2",
-    "software-properties-common",
-    "python3-launchpadlib",
 };
 
 const debian_awg_repo_prereqs = [_][]const u8{
@@ -795,11 +793,11 @@ fn ensureAmneziaWgInstalled(ui: *Tui, allocator: std.mem.Allocator) bool {
         // Handled above; `return false` rather than `unreachable`, which is UB in the
         // ReleaseFast build that actually ships.
         .unsupported => return false,
-        .ubuntu_add_apt_repository => {
+        .ubuntu_launchpad_source => {
             if (!runCommandChecked(
                 ui,
                 allocator,
-                &.{ "add-apt-repository", "-y", "ppa:amnezia/ppa" },
+                &.{ "sh", "-c", ubuntuAmneziaRepositorySetupScript() },
                 "Failed to add Amnezia PPA",
             )) return false;
         },
@@ -850,7 +848,7 @@ fn installAwgRepositoryPrerequisites(ui: *Tui, allocator: std.mem.Allocator, rep
 }
 fn awgRepositoryPrerequisitePackages(repo_setup: AwgRepositorySetup) []const []const u8 {
     return switch (repo_setup) {
-        .ubuntu_add_apt_repository => &ubuntu_awg_repo_prereqs,
+        .ubuntu_launchpad_source => &ubuntu_awg_repo_prereqs,
         .debian_launchpad_focal_source => &debian_awg_repo_prereqs,
         .unsupported => &.{},
     };
@@ -875,11 +873,11 @@ fn awgRepositorySetupFor(os_release: []const u8, apt_available: bool) AwgReposit
     const id_like = osReleaseValue(os_release, "ID_LIKE") orelse "";
 
     if (std.ascii.eqlIgnoreCase(id, "debian")) return .debian_launchpad_focal_source;
-    if (std.ascii.eqlIgnoreCase(id, "ubuntu")) return .ubuntu_add_apt_repository;
-    if (osReleaseListContains(id_like, "ubuntu")) return .ubuntu_add_apt_repository;
+    if (std.ascii.eqlIgnoreCase(id, "ubuntu")) return .ubuntu_launchpad_source;
+    if (osReleaseListContains(id_like, "ubuntu")) return .ubuntu_launchpad_source;
     if (osReleaseListContains(id_like, "debian")) return .debian_launchpad_focal_source;
 
-    return if (apt_available) .ubuntu_add_apt_repository else .unsupported;
+    return if (apt_available) .ubuntu_launchpad_source else .unsupported;
 }
 /// ID_LIKE is a space-separated list ("ID_LIKE=ubuntu debian"), so a substring search
 /// would match "notubuntu" too. Compare whole entries.
@@ -906,18 +904,31 @@ fn osReleaseValue(content: []const u8, key: []const u8) ?[]const u8 {
     return null;
 }
 fn debianAmneziaRepositorySetupScript() []const u8 {
+    return "set -eu\nsuite=focal\n" ++ comptime amneziaRepositorySetupScript();
+}
+fn ubuntuAmneziaRepositorySetupScript() []const u8 {
+    // Fetch the pinned key over HTTPS instead of add-apt-repository's GPG
+    // keyserver transport, which can time out inside CI containers.
     return
     \\set -eu
+    \\. /etc/os-release
+    \\suite="${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"
+    \\case "$suite" in ''|*[!a-z]*) echo "Missing or invalid Ubuntu base codename" >&2; exit 1 ;; esac
+    \\
+    ++ comptime amneziaRepositorySetupScript();
+}
+fn amneziaRepositorySetupScript() []const u8 {
+    return
     \\install -d -m 0755 /usr/share/keyrings /etc/apt/sources.list.d
     \\tmp="$(mktemp)"
     \\trap 'rm -f "$tmp"' EXIT
-    \\curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x75C9DD72C799870E310542E24166F2C257290828" -o "$tmp"
+    \\curl -fsSL --retry 3 --connect-timeout 15 --max-time 60 "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x75C9DD72C799870E310542E24166F2C257290828" -o "$tmp"
     \\fingerprints="$(gpg --batch --with-colons --import-options show-only --import "$tmp" | awk -F: '$1=="pub" { want=1; next } want && $1=="fpr" { print $10; want=0 }')"
     \\[ "$fingerprints" = 75C9DD72C799870E310542E24166F2C257290828 ] || exit 1
     \\gpg --batch --yes --dearmor -o /usr/share/keyrings/amnezia-ppa.gpg "$tmp"
-    \\cat >/etc/apt/sources.list.d/amnezia-ppa.list <<'AMNEZIA_PPA'
-    \\deb [signed-by=/usr/share/keyrings/amnezia-ppa.gpg] https://ppa.launchpadcontent.net/amnezia/ppa/ubuntu focal main
-    \\deb-src [signed-by=/usr/share/keyrings/amnezia-ppa.gpg] https://ppa.launchpadcontent.net/amnezia/ppa/ubuntu focal main
+    \\cat >/etc/apt/sources.list.d/amnezia-ppa.list <<AMNEZIA_PPA
+    \\deb [signed-by=/usr/share/keyrings/amnezia-ppa.gpg] https://ppa.launchpadcontent.net/amnezia/ppa/ubuntu $suite main
+    \\deb-src [signed-by=/usr/share/keyrings/amnezia-ppa.gpg] https://ppa.launchpadcontent.net/amnezia/ppa/ubuntu $suite main
     \\AMNEZIA_PPA
     ;
 }
@@ -1887,7 +1898,7 @@ test "tunnel deps - Debian uses explicit Amnezia Launchpad focal source" {
     try std.testing.expectEqual(AwgRepositorySetup.debian_launchpad_focal_source, awgRepositorySetupForOsRelease(os_release));
 
     const script = debianAmneziaRepositorySetupScript();
-    try std.testing.expect(std.mem.indexOf(u8, script, "ppa.launchpadcontent.net/amnezia/ppa/ubuntu focal main") != null);
+    try std.testing.expect(std.mem.indexOf(u8, script, "ppa.launchpadcontent.net/amnezia/ppa/ubuntu $suite main") != null);
     try std.testing.expect(std.mem.indexOf(u8, script, "signed-by=/usr/share/keyrings/amnezia-ppa.gpg") != null);
     try std.testing.expect(std.mem.indexOf(u8, script, "0x75C9DD72C799870E310542E24166F2C257290828") != null);
     try std.testing.expect(std.mem.indexOf(u8, script, "add-apt-repository") == null);
@@ -1900,7 +1911,7 @@ test "tunnel deps - Debian uses explicit Amnezia Launchpad focal source" {
     try std.testing.expect(!containsString(prereqs, "python3-launchpadlib"));
 }
 
-test "tunnel deps - Ubuntu keeps add-apt-repository PPA path" {
+test "tunnel deps - Ubuntu uses HTTPS key and native base suite" {
     const os_release =
         \\PRETTY_NAME="Ubuntu 24.04.2 LTS"
         \\NAME="Ubuntu"
@@ -1909,11 +1920,17 @@ test "tunnel deps - Ubuntu keeps add-apt-repository PPA path" {
         \\VERSION_CODENAME=noble
     ;
 
-    try std.testing.expectEqual(AwgRepositorySetup.ubuntu_add_apt_repository, awgRepositorySetupForOsRelease(os_release));
+    try std.testing.expectEqual(AwgRepositorySetup.ubuntu_launchpad_source, awgRepositorySetupForOsRelease(os_release));
 
-    const prereqs = awgRepositoryPrerequisitePackages(.ubuntu_add_apt_repository);
-    try std.testing.expect(containsString(prereqs, "software-properties-common"));
-    try std.testing.expect(containsString(prereqs, "python3-launchpadlib"));
+    const prereqs = awgRepositoryPrerequisitePackages(.ubuntu_launchpad_source);
+    try std.testing.expect(!containsString(prereqs, "software-properties-common"));
+    try std.testing.expect(!containsString(prereqs, "python3-launchpadlib"));
+    const script = ubuntuAmneziaRepositorySetupScript();
+    try std.testing.expect(std.mem.indexOf(u8, script, "UBUNTU_CODENAME:-${VERSION_CODENAME:-}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, script, "https://keyserver.ubuntu.com/") != null);
+    try std.testing.expect(std.mem.indexOf(u8, script, "--retry 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, script, "signed-by=/usr/share/keyrings/amnezia-ppa.gpg") != null);
+    try std.testing.expect(std.mem.indexOf(u8, script, "add-apt-repository") == null);
 }
 
 test "tunnel deps - Debian/Ubuntu derivatives follow ID_LIKE" {
@@ -1935,7 +1952,7 @@ test "tunnel deps - Debian/Ubuntu derivatives follow ID_LIKE" {
         \\ID_LIKE="ubuntu debian"
     ;
     try std.testing.expectEqual(
-        AwgRepositorySetup.ubuntu_add_apt_repository,
+        AwgRepositorySetup.ubuntu_launchpad_source,
         awgRepositorySetupFor(mint, false),
     );
 
@@ -1972,7 +1989,7 @@ test "tunnel deps - Arch and Fedora are reported as unsupported, not run through
     // The apt fallback is deliberately generous: an apt host with an ID we do not know
     // keeps working exactly as before rather than newly refusing.
     try std.testing.expectEqual(
-        AwgRepositorySetup.ubuntu_add_apt_repository,
+        AwgRepositorySetup.ubuntu_launchpad_source,
         awgRepositorySetupFor("ID=someunknownapthost", true),
     );
     try std.testing.expectEqual(
