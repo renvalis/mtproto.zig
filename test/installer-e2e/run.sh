@@ -563,6 +563,7 @@ restore_proxy_under_test() {
   local container="$1"
   docker cp "$BUILD_DIR/bin/mtproto-proxy" "$container:/tmp/mtproto-proxy-under-test"
   run_in_container "$container" bash -lc '
+    set -Eeuo pipefail
     install -m 0755 /tmp/mtproto-proxy-under-test /opt/mtproto-proxy/mtproto-proxy
     systemctl restart mtproto-proxy
     systemctl is-active --quiet mtproto-proxy
@@ -703,6 +704,20 @@ run_case() {
 main() {
   require_cmd docker
   require_cmd zig
+  require_cmd curl
+
+  # A fork does not inherit upstream releases. Fail before building images when
+  # the signed release fixture required by the installer does not exist.
+  local release_endpoint="latest"
+  if [[ "$VERSION" != "latest" && -n "$VERSION" ]]; then
+    release_endpoint="tags/v${VERSION#v}"
+  fi
+  if ! curl -fsSL --retry 3 --connect-timeout 15 --max-time 60 \
+    "https://api.github.com/repos/renvalis/mtproto.zig/releases/$release_endpoint" \
+    -o /dev/null; then
+    echo "Cannot fetch release '$VERSION' from renvalis/mtproto.zig. Installer E2E requires a published release with signed assets; forks do not inherit upstream releases." >&2
+    exit 1
+  fi
 
   local target
   target="$(docker_arch)"
